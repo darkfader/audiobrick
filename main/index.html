@@ -68,6 +68,11 @@ a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:
       <div class="stat"><b id="sUp">–</b><span>uptime</span></div>
       <div class="stat"><b id="sIp">–</b><span>address</span></div>
     </div>
+    <div style="margin-top:12px">
+      <div class="row" style="align-items:baseline;justify-content:space-between"><span>Volume</span><b id="sVolPct">–</b></div>
+      <input type="range" id="sVolBar" min="0" max="100" step="1" value="0" disabled aria-label="Current volume, read only" style="width:100%;margin:6px 0 2px">
+      <div class="mut small" id="sVolNote">100 % is the loudest the speaker profile allows.</div>
+    </div>
   </div>
 
   <div class="card" id="protCard">
@@ -599,6 +604,9 @@ async function poll(){
     const s=await (await fetch('/status')).json();
     $('ver').textContent='firmware '+s.version+' · '+s.partition;
     $('sPvdd').textContent=s.pvdd_v>0?s.pvdd_v.toFixed(2):'–';
+    {const pct=Math.max(0,Math.min(100,Math.round(100*s.volume_level)));
+     $('sVolBar').value=pct;$('sVolPct').textContent=pct+' %';
+     $('sVolNote').textContent='Amp at '+s.vol_db+' dB. 100 % = '+(s.volume_level>0.02?Math.round((s.vol_db+70)/s.volume_level-70)+' dB':'the limit')+', the loudest the speaker profile allows (raise it under Speaker profile and limits).'}
     $('sVol').textContent=s.vol_db;
     $('sUp').textContent=fmtUp(s.uptime_s);
     $('sIp').textContent=s.ip||'–';
