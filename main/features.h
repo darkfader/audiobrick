@@ -34,3 +34,8 @@
 #else
 #define AB_HAS_SYNTH 0
 #endif
+#ifdef CONFIG_AB_FEATURE_MDNS
+#define AB_HAS_MDNS 1
+#else
+#define AB_HAS_MDNS 0
+#endif

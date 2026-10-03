@@ -9,6 +9,10 @@
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_netif.h"
+#include "sdkconfig.h"
+#if CONFIG_AB_FEATURE_MDNS
+#include "mdns.h"
+#endif
 
 static const char *TAG = "net";
 
@@ -31,6 +35,27 @@ static void on_eth_event(void *arg, esp_event_base_t base, int32_t id, void *dat
         break;
     }
 }
+
+#if CONFIG_AB_FEATURE_MDNS
+// Answer "audiobrick.local" and announce the services, so no fixed address is needed.
+static void mdns_start(void)
+{
+    if (mdns_init() != ESP_OK) {
+        ESP_LOGW(TAG, "mDNS init failed");
+        return;
+    }
+    mdns_hostname_set("audiobrick");
+    mdns_instance_name_set("Esparagus Audio Brick");
+    mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
+#if CONFIG_AB_FEATURE_SYNTH
+    mdns_service_add(NULL, "_osc", "_udp", 9000, NULL, 0);
+#endif
+#if CONFIG_AB_FEATURE_VBAN
+    mdns_service_add(NULL, "_vban", "_udp", 6980, NULL, 0);
+#endif
+    ESP_LOGI(TAG, "mDNS: audiobrick.local");
+}
+#endif
 
 static void on_got_ip(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
@@ -98,6 +123,10 @@ bool net_start(void)
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, on_got_ip, NULL));
     s_eth = eth;
     ESP_ERROR_CHECK(esp_eth_start(eth));
+#if CONFIG_AB_FEATURE_MDNS
+    net_set_promiscuous(true);  // the W5500 filter would drop mDNS queries sent to 224.0.0.251
+    mdns_start();
+#endif
     ESP_LOGI(TAG, "W5500 started, MAC %02x:%02x:%02x:%02x:%02x:%02x",
              addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
     return true;
@@ -113,6 +142,9 @@ void *net_eth_handle(void) { return s_eth; }
 void net_set_promiscuous(bool on)
 {
     if (!s_eth) return;
+#if CONFIG_AB_FEATURE_MDNS
+    on = true;  // mDNS needs multicast reception at all times
+#endif
     bool v = on;
     if (esp_eth_ioctl(s_eth, ETH_CMD_S_ALL_MULTICAST, &v) != ESP_OK) {
         esp_eth_ioctl(s_eth, ETH_CMD_S_PROMISCUOUS, &v);

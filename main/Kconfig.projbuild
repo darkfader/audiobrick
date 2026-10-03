@@ -43,4 +43,10 @@ menu "Audio Brick features"
         help
             Eight-voice synthesizer controlled by OSC messages.
 
+    config AB_FEATURE_MDNS
+        bool "mDNS (reach the board as audiobrick.local)"
+        default y
+        help
+            Advertises the hostname "audiobrick" and the web, OSC and VBAN services on the local network.
+
 endmenu

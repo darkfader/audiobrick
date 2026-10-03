@@ -6,12 +6,12 @@ The Brick can receive sound from a PC in four ways. Pick by what you want to see
 | Way | Windows sees | Needs installing | Works on Windows 11 | Status on this PC |
 |---|---|---|---|---|
 | **A. Virtual cable + `tools/stream.py`** (TCP, port 4010) | a normal playback device ("VB-Audio Virtual Cable") | VB-Cable, ffmpeg, Python | yes (signed driver) | **installed and tested end to end** |
-| **B. Voicemeeter + VBAN** (UDP 6980) | Voicemeeter's virtual devices; the Brick is an outgoing VBAN stream | Voicemeeter (Banana is enough) | yes (signed driver) | not installed |
+| **B. Voicemeeter + VBAN** (UDP 6980) | Voicemeeter's virtual devices; the Brick is an outgoing VBAN stream | Voicemeeter (Banana is enough) | yes (signed driver) | **installed and tested end to end** |
 | **C. Scream** (UDP 4010, unicast or multicast) | a playback device "Speakers (Scream)" | the Scream driver | **no, not normally (see below)** | not installed, not recommended |
 | **D. Bluetooth** | a normal Bluetooth speaker | nothing | yes | not built into the firmware |
 
 The firmware side of B and C is built and tested (with a stand-in sender that speaks the same protocols, see
-`tools/netaudio_test.py`); only the Windows side is missing. A has been tested with the real Windows software.
+`tools/netaudio_test.py`). A and B have been tested with the real Windows software; C has not (no usable driver).
 
 ## Downloads
 
@@ -42,11 +42,12 @@ The firmware side of B and C is built and tested (with a stand-in sender that sp
 
 ## B. Voicemeeter and VBAN
 
-1. Install Voicemeeter Banana (link above) and reboot when it asks. Its drivers are signed by Microsoft, so no special Windows settings are needed.
+1. Install Voicemeeter Banana (link above). Its drivers are signed by Microsoft, so no special Windows settings are needed. The installer asks for a restart; on this PC restarting the Windows Audio service instead (`Restart-Service audiosrv -Force` in an administrator PowerShell) and then closing and reopening Voicemeeter was enough. Until then Voicemeeter showed no level for any sound and sent nothing.
 2. On the Brick's web page, open "Network audio from Windows", tick **VBAN receiver**, optionally enter your PC's address in
    "Only accept audio from this address", and Save.
 3. In Voicemeeter: open the **VBAN** window (menu), add an outgoing stream, set **IP address** to the Brick's address, **port 6980**, a stream
    name (any, or the one you set on the Brick), format 48 kHz 16 bit stereo, tick the stream on, and choose the strip/bus to send.
+   From the command line: `python tools/voicemeeter_vban.py audiobrick.local --name Brick --route 0` (address `192.168.2.40` also works; `--off` switches the stream off; `tools/voicemeeter_test.py <address>` plays a tone into "Voicemeeter Input" and checks with a microphone that it arrives). Voicemeeter's strips go to A1/B1 by default; select "Voicemeeter Input" as an app's output device.
 4. Sound from that bus now plays on the Brick. The Brick plays the stream only while packets arrive and releases the main channel when they stop.
 
 ## C. Scream on Windows 11 (read this first)

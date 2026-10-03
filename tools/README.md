@@ -40,3 +40,11 @@ Recordings made with firmware older than 0.6.2 contain a 440 Hz beep after the s
 | `osc_test.py` | Builds real OSC messages and a bundle for the synthesizer and checks the notes by microphone. |
 | `cable_test.py` | Plays a tone into the VB-Cable, sends it to the board with `stream.py`, and checks by microphone that it comes out of the speaker. |
 | `latency_test.py` | Measures command-to-sound latency (and with `--boot` the start-up time after a reset). |
+
+## Amp power-down and Voicemeeter (v1.1.0)
+
+- `amp_power_test.py [host]` - sets short idle times, watches the amp go Hi-Z and off, and checks the 2-20 kHz band around each transition for clicks (microphone in front of a speaker; keep the room quiet).
+- `wake_test.py [host] [--path stream|tone] [--repeat N]` - when does a sound become audible from awake, Hi-Z and powered-off, and does it last as long as it should? Result 2026-10-03: no measurable wake cost on either path (powering the chip up takes about 30 ms and happens while the mixer's 100 ms fade-in is still at zero), tone length unchanged.
+- `voicemeeter_vban.py` / `voicemeeter_test.py` - drive Voicemeeter's VBAN out stream from the command line and test the Windows -> Voicemeeter -> Brick path (not working yet, see CLAUDE.md).
+- `sine_via_voicemeeter.py [host] [--freq 440] [--db -24] [--seconds N]` - steady phase-continuous sine from the PC through Voicemeeter and VBAN to the Brick (a single monotone for buffer tests). Measured 2026-10-03: buffer 148-167 ms, 0 underruns, 0 dropped packets, amplitude wobble at the speaker about 11 % peak-to-peak (slow room effect; the Brick's own tone shows 30 %).
+  **Lesson:** Voicemeeter's first strip is the PC microphone, routed to the speakers and to the VBAN bus by default. That fed the speaker sound back and made a +-80 % wobble at 2.6 and 9 Hz (it was not the Brick's buffering). `voicemeeter_vban.py` now mutes the three hardware strips when it sets the stream up (`--keep-inputs` to skip).

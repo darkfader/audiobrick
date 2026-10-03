@@ -11,6 +11,7 @@
 #include <string.h>
 #include "sdkconfig.h"
 #include "ambient.h"
+#include "dac.h"
 #include "esp_http_server.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -166,6 +167,7 @@ void ambient_http_register(httpd_handle_t server)
         { .uri = "/player/autonext", .method = HTTP_POST, .handler = autonext_h },
     };
     for (size_t i = 0; i < sizeof uris / sizeof uris[0]; i++) httpd_register_uri_handler(server, &uris[i]);
+    dac_http_register(server);
 #if CONFIG_AB_FEATURE_VBAN || CONFIG_AB_FEATURE_SCREAM
     netaudio_http_register(server);
 #endif

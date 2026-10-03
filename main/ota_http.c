@@ -284,12 +284,12 @@ static esp_err_t status_handler(httpd_req_t *req)
     media_kind_t mk = media_kind();
     size_t st_total = 0, st_free = 0;
     storage_info(&st_total, &st_free);
-    char json[1700];
+    char json[1800];
     snprintf(json, sizeof json,
              "{\"version\":\"%s\",\"built\":\"%s %s\",\"partition\":\"%s\",\"uptime_s\":%lld,\"ip\":\"%s\","
              "\"pvdd_v\":%.2f,\"fault\":%s,\"warning\":%s,"
              "\"regs\":{\"chan_fault\":%u,\"fault1\":%u,\"fault2\":%u,\"warning\":%u},"
-             "\"safe_mode\":%s,\"vol_db\":%d,\"volume_level\":%.3f,\"clip\":%s,"
+             "\"amp\":\"%s\",\"safe_mode\":%s,\"vol_db\":%d,\"volume_level\":%.3f,\"clip\":%s,"
              "\"tone\":{\"on\":%s,\"freq_hz\":%.1f,\"db\":%.1f},"
              "\"est\":{\"vrms\":%.3f,\"watts\":%.3f,\"spl\":%.1f},"
              "\"media\":{\"src\":\"%s\",\"label\":\"%s\",\"buffer_ms\":%u,\"underruns\":%u},"
@@ -301,7 +301,7 @@ static esp_err_t status_handler(httpd_req_t *req)
              app->version, app->date, app->time, part ? part->label : "?",
              (long long)(esp_timer_get_time() / 1000000), net_ip_str(), pvdd,
              dac_fault_active() ? "true" : "false", dac_warning_active() ? "true" : "false",
-             reg[0], reg[1], reg[2], reg[3], safemode_active() ? "true" : "false", vol, (vol + 70.0f) / (limits_max_volume_db() + 70.0f), clip ? "true" : "false",
+             reg[0], reg[1], reg[2], reg[3], dac_state() == AMP_OFF ? "off" : (dac_state() == AMP_HIZ ? "hiz" : "active"), safemode_active() ? "true" : "false", vol, (vol + 70.0f) / (limits_max_volume_db() + 70.0f), clip ? "true" : "false",
              t.enabled ? "true" : "false", t.freq_hz, t.level_dbfs,
              vrms, watts, spl,
              mk == MEDIA_STREAM ? "stream" : (mk == MEDIA_CLIP ? "clip" : "none"), media_label(),
@@ -479,7 +479,7 @@ bool ota_http_start(void)
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.stack_size = 8192;
     cfg.recv_wait_timeout = 20;
-    cfg.max_uri_handlers = 48;
+    cfg.max_uri_handlers = 56;
     cfg.max_open_sockets = 8;  // the lwIP pool is 16: web server 8 + 2 internal, the stream port and its client
     cfg.lru_purge_enable = true;
     httpd_handle_t server;

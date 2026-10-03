@@ -606,7 +606,7 @@ async function poll(){
     const net=$('cNet'),amp=$('cAmp');
     net.className='chip '+(s.ip?'ok':'warn');net.lastChild.textContent=s.ip?'online':'no address';
     const cls=s.fault?'bad':(s.warning?'warn':'ok');
-    amp.className='chip '+cls;amp.lastChild.textContent=s.fault?'amp fault':(s.warning?'amp warning':'amp OK');
+    amp.className='chip '+cls;amp.lastChild.textContent=(s.fault?'amp fault':(s.warning?'amp warning':'amp OK'))+(s.amp==='hiz'?' · Hi-Z':(s.amp==='off'?' · powered down':''));
     $('tstate').textContent=s.tone.on?('Playing '+s.tone.freq_hz+' Hz'):'Stopped';
     if(!s.tone.on)playing=false;   // the firmware stopped it (timeout, fault or another client)
     if(!volSynced){appliedVol=Math.min(s.vol_db,+$('mvol').max);$('mvol').value=appliedVol;$('mvolV').textContent=appliedVol;volSynced=true}
