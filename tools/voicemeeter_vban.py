@@ -16,6 +16,7 @@ import sys
 import time
 
 DLL = r"C:\Program Files (x86)\VB\Voicemeeter\VoicemeeterRemote64.dll"
+EXE = r"C:\Program Files (x86)\VB\Voicemeeter\voicemeeterpro_x64.exe"  # Voicemeeter Banana
 
 
 def api():
@@ -30,6 +31,20 @@ def api():
     vm.VBVMR_GetParameterStringA.restype = ctypes.c_long
     vm.VBVMR_IsParametersDirty.restype = ctypes.c_long
     return vm
+
+
+def ensure_running():
+    """Voicemeeter is the audio engine, so its program must be running, but its window need not be: start it minimized."""
+    import subprocess
+    if "voicemeeterpro_x64.exe" in subprocess.run(["tasklist", "/FI", "IMAGENAME eq voicemeeterpro_x64.exe", "/NH"],
+                                                  capture_output=True, text=True).stdout:
+        return False
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    si.wShowWindow = 0  # SW_HIDE (Voicemeeter may still open its window once; it is hidden again right after login)
+    subprocess.Popen([EXE], startupinfo=si)
+    print("started Voicemeeter (hidden)")
+    return True
 
 
 def get_f(vm, name):
@@ -62,14 +77,23 @@ def main():
     ap.add_argument("--stream", type=int, default=0, help="which of Voicemeeter's outgoing VBAN streams (0-7)")
     ap.add_argument("--keep-inputs", action="store_true",
                     help="do not mute Voicemeeter's hardware input strips (see below)")
+    ap.add_argument("--show-window", action="store_true", help="leave Voicemeeter's window open instead of hiding it to the tray")
     ap.add_argument("--off", action="store_true")
     ap.add_argument("--show", action="store_true")
     args = ap.parse_args()
 
+    started = ensure_running()
     vm = api()
     rc = vm.VBVMR_Login()
+    for _ in range(30):  # a freshly started Voicemeeter needs a few seconds before it answers
+        if rc >= 0:
+            break
+        time.sleep(1.0)
+        rc = vm.VBVMR_Login()
     if rc < 0:
         sys.exit(f"cannot reach Voicemeeter (login returned {rc}); is it running?")
+    if started and not args.show_window:
+        vm.VBVMR_SetParameters(b"Command.Show=0;")  # hide the window as early as possible
     time.sleep(1.0)  # the API needs a moment after login before parameters can be set or read
     try:
         p = f"vban.outstream[{args.stream}]"
@@ -97,6 +121,8 @@ def main():
             r = vm.VBVMR_SetParameters(f"{p}.on=1;".encode())  # ignored when sent in the same batch as the settings
             print("switch on:", "ok" if r == 0 else f"returned {r}")
             time.sleep(0.5)
+        if not args.off and not args.show_window:
+            vm.VBVMR_SetParameters(b"Command.Show=0;")  # keep running in the tray, no window in the way
         show(vm, args.stream)
     finally:
         vm.VBVMR_Logout()

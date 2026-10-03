@@ -5,8 +5,8 @@ The Brick can receive sound from a PC in four ways. Pick by what you want to see
 
 | Way | Windows sees | Needs installing | Works on Windows 11 | Status on this PC |
 |---|---|---|---|---|
-| **A. Virtual cable + `tools/stream.py`** (TCP, port 4010) | a normal playback device ("VB-Audio Virtual Cable") | VB-Cable, ffmpeg, Python | yes (signed driver) | **installed and tested end to end** |
-| **B. Voicemeeter + VBAN** (UDP 6980) | Voicemeeter's virtual devices; the Brick is an outgoing VBAN stream | Voicemeeter (Banana is enough) | yes (signed driver) | **installed and tested end to end** |
+| **A. VB-Cable + hidden sender `tools/brick_sender.py`** (TCP, port 4010) | ONE playback device ("Speakers (VB-Audio Virtual Cable)") | VB-Cable, Python | yes (signed driver) | **installed and tested end to end; recommended** |
+| **B. Voicemeeter + VBAN** (UDP 6980) | about 18 Voicemeeter devices; the Brick is an outgoing VBAN stream | Voicemeeter (Banana is enough) | yes (signed driver) | worked end to end, then **uninstalled again** (too many devices) |
 | **C. Scream** (UDP 4010, unicast or multicast) | a playback device "Speakers (Scream)" | the Scream driver | **no, not normally (see below)** | not installed, not recommended |
 | **D. Bluetooth** | a normal Bluetooth speaker | nothing | yes | not built into the firmware |
 
@@ -27,7 +27,31 @@ The firmware side of B and C is built and tested (with a stand-in sender that sp
 | Python packages for the tools | `pip install numpy scipy sounddevice matplotlib pyserial` | `stream.py` needs only ffmpeg and Python |
 | ESP-IDF 5.5 (to build the firmware) | https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32/get-started/index.html | |
 
-## A. Virtual cable + stream.py (works today)
+## A. One device: VB-Cable and the hidden background sender (recommended)
+
+This gives Windows exactly **one** playback device, "Speakers (VB-Audio Virtual Cable)" (that is how VB-Cable's "CABLE Input" is named on current
+installs), plus one recording device that only the sender uses. No window, no ffmpeg. Tested end to end (599.9 Hz at the speaker).
+
+1. Install VB-Cable (link above) and Python with `pip install numpy sounddevice`.
+2. Hide VB-Cable's second, 16-channel playback device (as administrator; nothing is uninstalled, `-Restore` shows it again):
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File tools/Set-SingleBrickAudioDevice.ps1
+   ```
+3. Install the background sender (normal user, no administrator). It asks for the Brick's web password once and stores it in
+   `%APPDATA%\audiobrick\password`, then starts `tools/brick_sender.py` hidden at every logon:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File tools/Install-BrickSender.ps1
+   ```
+   (`-HostName 192.168.2.40` if `audiobrick.local` does not resolve on your network; `-Remove` uninstalls it again.)
+4. In Windows' sound settings, play the app (or the default output) to "Speakers (VB-Audio Virtual Cable)". Your normal speakers stay silent for that app.
+
+How it behaves: the sender listens to the cable and connects to the Brick only while there is sound; 5 s after the last sound it disconnects again, so the
+amp can mute, go Hi-Z and power down. When sound starts it reconnects (about 0.2 s of pre-buffering). Log: `%TEMP%\brick_sender.log`.
+Test it with the microphone: `python tools/sender_test.py`.
+
+### Manual alternative: stream.py (ffmpeg)
+
+The older way, also good for files and URLs:
 
 1. Install VB-Cable (link above) and ffmpeg.
 2. In Windows, set the app you want to hear on the Brick (or the whole system) to play to the cable's playback device
@@ -49,6 +73,20 @@ The firmware side of B and C is built and tested (with a stand-in sender that sp
    name (any, or the one you set on the Brick), format 48 kHz 16 bit stereo, tick the stream on, and choose the strip/bus to send.
    From the command line: `python tools/voicemeeter_vban.py audiobrick.local --name Brick --route 0` (address `192.168.2.40` also works; `--off` switches the stream off; `tools/voicemeeter_test.py <address>` plays a tone into "Voicemeeter Input" and checks with a microphone that it arrives). Voicemeeter's strips go to A1/B1 by default; select "Voicemeeter Input" as an app's output device.
 4. Sound from that bus now plays on the Brick. The Brick plays the stream only while packets arrive and releases the main channel when they stop.
+
+### Voicemeeter clutter (read before choosing B)
+
+Voicemeeter Banana adds about 18 audio devices to Windows (8 playback, 8 recording, plus the cable ones if VB-Cable is installed). Trying to hide the
+extra ones did **not** work on the PC this was developed on: after hiding any VB-Audio device (even only the VB-Cable ones) Voicemeeter received no
+audio from "Voicemeeter Input" until everything was shown again and the Windows Audio service restarted. If you want exactly one device in Windows, use
+route A ("one device, hidden background sender") instead.
+
+Other things learned with Voicemeeter:
+- Its first strip is your **PC microphone**, routed to the speakers and to the VBAN stream. That sends the microphone to the Brick and makes a feedback
+  loop that wobbles every sound by about +-80 % (measured). `tools/voicemeeter_vban.py` mutes the three hardware strips when it sets the stream up.
+- Voicemeeter is the audio engine, there is no background service: its program must be running (it can sit hidden in the tray; `tools/voicemeeter_vban.py`
+  starts it hidden and hides the window, which may flash for a moment).
+- The Brick ignores a sender that only sends digital silence (Voicemeeter's VBAN stream never stops): after 4 s it releases the channel so the amp can idle.
 
 ## C. Scream on Windows 11 (read this first)
 

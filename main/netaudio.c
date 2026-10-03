@@ -24,6 +24,8 @@ static const char *TAG = "netaudio";
 #define MAX_LATENCY_MS   350    // drop packets beyond this so a live source never builds up delay
 #define IDLE_END_MS      600    // no packets for this long: the stream is over
 #define LOCKOUT_MS       1000   // after a stop, wait for the sender to go quiet before accepting it again
+#define SILENCE_END_MS   4000   // a sender that keeps sending digital silence (Voicemeeter does) this long is treated as idle
+#define SILENCE_LEVEL    16     // peak sample value that still counts as silence (16-bit scale)
 
 static netaudio_cfg_t s_cfg;
 
@@ -70,6 +72,7 @@ typedef struct {
     bool ours;                // we hold the main channel
     bool blocked;             // stopped by the user: ignore the sender until it goes quiet
     int64_t last_pkt_us;
+    int64_t last_loud_us;     // last packet with real signal in it
     resampler_t rs;
     uint32_t rs_rate;
     int16_t stereo[2 * 1024]; // converted packet
@@ -105,6 +108,20 @@ static void deliver(session_t *s, const char *label, const struct sockaddr_in *f
     int64_t now = esp_timer_get_time();
     s->last_pkt_us = now;
     s->stat.packets++;
+    // Always-on senders such as Voicemeeter's VBAN stream keep sending zeros when nothing plays. Without this the
+    // stream would hold the channel for ever and the amp could never go idle, mute or power down.
+    int peak = 0;
+    for (size_t i = 0; i < 2 * n; i++) {
+        int v = frames[i] < 0 ? -frames[i] : frames[i];
+        if (v > peak) peak = v;
+    }
+    if (peak > SILENCE_LEVEL) s->last_loud_us = now;
+    bool silent_long = now - s->last_loud_us > (int64_t)SILENCE_END_MS * 1000;
+    if (silent_long) {
+        if (s->ours) end_session(s);
+        s->stat.active = false;
+        return;  // do not start (or keep) a session for silence
+    }
     if (s->blocked) return;
     if (s->ours && media_aborted()) {  // the user pressed stop: stay quiet until the sender stops
         s->ours = false;
