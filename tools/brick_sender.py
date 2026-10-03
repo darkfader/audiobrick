@@ -100,17 +100,19 @@ class VolumeFollower(threading.Thread):
         while True:
             try:
                 if vol is None:
+                    found = None
                     for d in AudioUtilities.GetAllDevices():
                         n = d.FriendlyName or ""
                         if "VB-Audio Virtual Cable" in n and not n.startswith("CABLE Output"):
-                            vol = d.EndpointVolume
+                            found = d.EndpointVolume
                             break
-                    if vol is None:
+                    if found is None:
                         time.sleep(5)
                         continue
-                    sent = self.brick_level()
-                    vol.SetMasterVolumeLevelScalar(sent, None)  # the slider starts at the Brick's level, never the other way round
-                    last_win = float(vol.GetMasterVolumeLevelScalar())
+                    sent = self.brick_level()                    # raises if the Brick is not reachable: try again later
+                    found.SetMasterVolumeLevelScalar(sent, None)  # the slider starts at the Brick's level, never the other way round
+                    last_win = float(found.GetMasterVolumeLevelScalar())
+                    vol = found                                   # only now: everything above worked
                     log(f"following the Windows volume (Brick is at {sent:.2f})")
                 self.muted = bool(vol.GetMute())
                 now = time.time()
@@ -146,7 +148,12 @@ def find_cable_output():
 
 def connect(host, pw):
     ip = socket.gethostbyname(host)
-    s = socket.create_connection((ip, 4010), timeout=5)
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # Windows auto-tunes the send buffer up to megabytes, which would hold seconds of audio when the Brick is slow or stalled
+    # (that shows up as audio lag). 32 KB is about 170 ms of 48 kHz stereo 16-bit.
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32768)
+    s.settimeout(5)
+    s.connect((ip, 4010))
     s.sendall(f"STREAM {pw} {FS} 2\n".encode())
     reply = b""
     while not reply.endswith(b"\n"):
@@ -157,7 +164,10 @@ def connect(host, pw):
     if reply.strip() != b"OK":
         s.close()
         raise ConnectionError(f"Brick refused the stream: {reply.decode(errors='replace').strip() or 'no answer'}")
-    s.settimeout(None)
+    s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    # A send that does not complete within 1 s means the Brick stopped reading (rebooting, crashed, cable pulled): give up on
+    # this connection and reconnect, instead of blocking for minutes while the cable's buffer backs up behind us.
+    s.settimeout(1.0)
     return s
 
 
@@ -166,13 +176,29 @@ def run(host):
     if not pw:
         log("no password: set AUDIOBRICK_PASSWORD or write it to %APPDATA%/audiobrick/password")
         return 2
-    q = queue.Queue(maxsize=400)
+    # Live audio must never build up delay: keep at most about 300 ms (15 blocks of 20 ms) and drop the OLDEST when behind.
+    # An unbounded or long queue was the cause of "enormous video/audio lag" when the Brick rebooted during a firmware update.
+    q = queue.Queue(maxsize=15)
 
     def cb(data, frames, t, status):
-        try:
-            q.put_nowait(data.copy())
-        except queue.Full:
-            pass  # the sender is stuck; drop rather than grow
+        while True:
+            try:
+                q.put_nowait(data.copy())
+                return
+            except queue.Full:
+                try:
+                    q.get_nowait()
+                except queue.Empty:
+                    pass
+
+    def flush():
+        n = 0
+        while True:
+            try:
+                q.get_nowait()
+                n += 1
+            except queue.Empty:
+                return n
 
     vf = VolumeFollower(host, pw)
     vf.start()
@@ -206,6 +232,7 @@ def run(host):
                 last_loud = now
             if sock is None and now - last_loud < 1.0 and block is not None:
                 sock = connect(host, pw)
+                flush()  # whatever piled up while connecting is old: start from the present
                 log("connected to the Brick")
             if sock is not None:
                 if block is not None:
@@ -229,7 +256,8 @@ def run(host):
                 except Exception:
                     pass
                 stream = None
-            time.sleep(3)
+            time.sleep(1)
+            flush()  # never replay audio that is seconds old
         except sd.PortAudioError as e:
             log(f"audio device problem: {e}")
             stream = None

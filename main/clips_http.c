@@ -120,6 +120,8 @@ static esp_err_t upload_handler(httpd_req_t *req)
     return httpd_resp_sendstr(req, "stored\n");
 }
 
+static char s_overlay[40];  // name of the clip we started on top of a stream (so Stop can end just that one)
+
 static esp_err_t play_handler(httpd_req_t *req)
 {
     if (!web_authorized(req)) return web_deny(req);
@@ -128,6 +130,22 @@ static esp_err_t play_handler(httpd_req_t *req)
     char query[96], val[8];
     bool loop = httpd_req_get_url_query_str(req, query, sizeof query) == ESP_OK &&
                 httpd_query_key_value(query, "loop", val, sizeof val) == ESP_OK && atoi(val) != 0;
+    // While a live stream (the PC's sound over the cable, VBAN, radio) owns the main channel, a clip is mixed on top of it
+    // through the mixer's spare one-shot channel instead of being refused. Clips themselves still replace each other.
+    if (media_active_slot(SLOT_MAIN) && media_kind_slot(SLOT_MAIN) == MEDIA_STREAM) {
+        if (media_active_slot(SLOT_EVENT)) {
+            httpd_resp_set_status(req, "409 Conflict");
+            return httpd_resp_sendstr(req, "another clip is already playing over the stream\n");
+        }
+        media_set_slot_gain_db(SLOT_EVENT, 0.0f);
+        if (!clip_play_slot(name, loop, SLOT_EVENT)) {
+            httpd_resp_set_status(req, "409 Conflict");
+            return httpd_resp_sendstr(req, "cannot play: missing file\n");
+        }
+        strlcpy(s_overlay, name, sizeof s_overlay);
+        return httpd_resp_sendstr(req, "playing over the stream\n");
+    }
+    s_overlay[0] = '\0';
     if (!player_play_clip(name, loop)) {
         httpd_resp_set_status(req, "409 Conflict");
         return httpd_resp_sendstr(req, "cannot play: missing file, or something else is playing\n");
@@ -206,6 +224,11 @@ static esp_err_t stop_handler(httpd_req_t *req)
 {
     if (!web_authorized(req)) return web_deny(req);
     media_abort();
+    // an overlay clip is ours to stop too, but never touch the ambient scene's own one-shots
+    if (s_overlay[0] && media_active_slot(SLOT_EVENT) && strcmp(media_label_slot(SLOT_EVENT), s_overlay) == 0) {
+        media_abort_slot(SLOT_EVENT);
+    }
+    s_overlay[0] = '\0';
     return httpd_resp_sendstr(req, "stopped\n");
 }
 

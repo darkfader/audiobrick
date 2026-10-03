@@ -87,7 +87,7 @@ a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:
   <div class="card">
     <h2>Estimated loudness</h2>
     <div class="stats">
-      <div class="stat"><b id="eSpl">–</b><span>dB SPL (at listening distance)</span></div>
+      <div class="stat"><b id="eSpl">–</b><span id="eLbl">dB SPL (at listening distance)</span></div>
       <div class="stat"><b id="eV">–</b><span>volts rms</span></div>
       <div class="stat"><b id="eW">–</b><span>watts per channel</span></div>
     </div>
@@ -626,12 +626,17 @@ async function poll(){
     const np=m.src==='clip'?m.label:'';if(np!==nowClip){nowClip=np;markPlaying()}
     if(m.src==='none'&&clipsShown&&s.storage.free!==lastFree){loadClips()}
     lastFree=s.storage.free;
-    const e=s.est,on=s.tone.on;
-    $('eSpl').textContent=on?e.spl.toFixed(0):'–';
-    $('eV').textContent=on?e.vrms.toFixed(2):'–';
-    $('eW').textContent=on?e.watts.toFixed(2):'–';
-    if(prof){const pct=on?Math.min(100,Math.max(0,(e.spl-30)/(prof.maxspl-30)*100)):0;
-      const b=$('eBar');b.style.width=pct+'%';b.style.background=pct>90?'var(--warn)':'var(--ok)'}
+    // Test tone on: the tone's own level. Otherwise: the loudest possible peak at the current volume (a full-scale signal);
+    // music averages 15-20 dB below that.
+    const on=s.tone.on,e=on?s.est:(s.est_peak||s.est);
+    $('eSpl').textContent=e.spl.toFixed(0);
+    $('eV').textContent=e.vrms.toFixed(2);
+    $('eW').textContent=e.watts.toFixed(2);
+    $('eLbl').textContent=on?'dB SPL (test tone, at listening distance)':'dB SPL, loudest peak at this volume';
+    $('eNote').textContent=on?'Calculated from the speaker profile, not measured. The bar fills toward your loudness limit.'
+      :'Calculated from the speaker profile, not measured: the loudest a full-scale signal could get at the current volume, on axis. Music typically averages 15\u201320 dB lower.';
+    if(prof){const pct=Math.min(100,Math.max(0,(e.spl-30)/(prof.maxspl-30)*100));
+      const b=$('eBar');b.style.width=pct+'%';b.style.background=(on&&pct>90)?'var(--warn)':'var(--ok)'}
   }catch(e){$('ver').textContent='offline';$('cNet').className='chip bad';$('cNet').lastChild.textContent='offline'}
 }
 // ---- safe tone controls -----------------------------------------------------------------

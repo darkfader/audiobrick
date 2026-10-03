@@ -278,13 +278,15 @@ static esp_err_t status_handler(httpd_req_t *req)
     int vol = dac_get_volume_db();
     float vrms, watts, spl;
     limits_estimate(t.level_dbfs, (float)vol, pvdd, &vrms, &watts, &spl);
+    float pk_v, pk_w, pk_spl;  // the loudest possible peak at this volume: a full-scale (0 dBFS) signal
+    limits_estimate(0.0f, (float)vol, pvdd, &pk_v, &pk_w, &pk_spl);
     // True when the requested peak is above what the supply can deliver, so the output clips.
     bool clip = t.enabled && pvdd > 0.0f &&
                 FULLSCALE_VPK * powf(10.0f, (t.level_dbfs + (float)vol) / 20.0f) > 0.9f * pvdd;
     media_kind_t mk = media_kind();
     size_t st_total = 0, st_free = 0;
     storage_info(&st_total, &st_free);
-    char json[1800];
+    char json[1900];
     snprintf(json, sizeof json,
              "{\"version\":\"%s\",\"built\":\"%s %s\",\"partition\":\"%s\",\"uptime_s\":%lld,\"ip\":\"%s\","
              "\"pvdd_v\":%.2f,\"fault\":%s,\"warning\":%s,"
@@ -292,6 +294,7 @@ static esp_err_t status_handler(httpd_req_t *req)
              "\"amp\":\"%s\",\"safe_mode\":%s,\"vol_db\":%d,\"volume_level\":%.3f,\"clip\":%s,"
              "\"tone\":{\"on\":%s,\"freq_hz\":%.1f,\"db\":%.1f},"
              "\"est\":{\"vrms\":%.3f,\"watts\":%.3f,\"spl\":%.1f},"
+             "\"est_peak\":{\"vrms\":%.3f,\"watts\":%.3f,\"spl\":%.1f},"
              "\"media\":{\"src\":\"%s\",\"label\":\"%s\",\"buffer_ms\":%u,\"underruns\":%u},"
              "\"storage\":{\"total\":%u,\"free\":%u},"
              "\"player\":{\"state\":\"%s\",\"clip\":\"%s\",\"index\":%d,\"count\":%d},"
@@ -304,6 +307,7 @@ static esp_err_t status_handler(httpd_req_t *req)
              reg[0], reg[1], reg[2], reg[3], dac_state() == AMP_OFF ? "off" : (dac_state() == AMP_HIZ ? "hiz" : "active"), safemode_active() ? "true" : "false", vol, (vol + 70.0f) / (limits_max_volume_db() + 70.0f), clip ? "true" : "false",
              t.enabled ? "true" : "false", t.freq_hz, t.level_dbfs,
              vrms, watts, spl,
+             pk_v, pk_w, pk_spl,
              mk == MEDIA_STREAM ? "stream" : (mk == MEDIA_CLIP ? "clip" : "none"), media_label(),
              (unsigned)media_buffer_ms(), (unsigned)media_underruns(),
              (unsigned)st_total, (unsigned)st_free,
