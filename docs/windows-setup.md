@@ -32,7 +32,7 @@ The firmware side of B and C is built and tested (with a stand-in sender that sp
 This gives Windows exactly **one** playback device, "Speakers (VB-Audio Virtual Cable)" (that is how VB-Cable's "CABLE Input" is named on current
 installs), plus one recording device that only the sender uses. No window, no ffmpeg. Tested end to end (599.9 Hz at the speaker).
 
-1. Install VB-Cable (link above) and Python with `pip install numpy sounddevice`.
+1. Install VB-Cable (link above) and Python with `pip install numpy sounddevice pycaw` (pycaw lets the sender follow the Windows volume keys).
 2. Hide VB-Cable's second, 16-channel playback device (as administrator; nothing is uninstalled, `-Restore` shows it again):
    ```powershell
    powershell -ExecutionPolicy Bypass -File tools/Set-SingleBrickAudioDevice.ps1
@@ -44,6 +44,13 @@ installs), plus one recording device that only the sender uses. No window, no ff
    ```
    (`-HostName 192.168.2.40` if `audiobrick.local` does not resolve on your network; `-Remove` uninstalls it again.)
 4. In Windows' sound settings, play the app (or the default output) to "Speakers (VB-Audio Virtual Cable)". Your normal speakers stay silent for that app.
+
+**Volume keys:** VB-Cable ignores Windows' volume and mute completely (measured: the level at the cable output does not change at all), and it carries no
+volume information. So the sender reads the Windows volume of "Speakers (VB-Audio Virtual Cable)" and sets the **Brick's own amp volume** to match
+(this keeps the full 16-bit resolution at low volumes); mute silences the stream. The media keys act on the *default* playback device, so make the
+cable the default device in Windows' sound settings if you want the keys to control the Brick. Safety: the Brick's volume only goes up in small steps (about 2 dB
+every 0.25 s) and never jumps; the speaker profile's cap still applies. At start the Windows slider is set to the Brick's current level (not the other
+way round), and changes made on the Brick's web page are copied back to the slider. Check it with `python tools/volume_test.py`.
 
 How it behaves: the sender listens to the cable and connects to the Brick only while there is sound; 5 s after the last sound it disconnects again, so the
 amp can mute, go Hi-Z and power down. When sound starts it reconnects (about 0.2 s of pre-buffering). Log: `%TEMP%\brick_sender.log`.

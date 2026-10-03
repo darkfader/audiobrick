@@ -27,6 +27,10 @@ if ($Remove) {
 $python = (Get-Command pythonw.exe -ErrorAction SilentlyContinue).Source
 if (-not $python) { throw 'pythonw.exe not found; install Python from https://www.python.org/downloads/ (with the packages: pip install numpy sounddevice)' }
 
+# pycaw lets the sender follow Windows' volume keys / mute (VB-Cable itself ignores them)
+$null = & python -c "import numpy, sounddevice, pycaw" 2>&1
+if ($LASTEXITCODE -ne 0) { & python -m pip install --quiet numpy sounddevice pycaw }
+
 $pw = $env:AUDIOBRICK_PASSWORD
 if (-not $pw) {
     $sec = Read-Host 'Audio Brick web password' -AsSecureString

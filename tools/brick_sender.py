@@ -9,15 +9,25 @@ cable's other end ("CABLE Output") and sends it to the Brick on TCP port 4010 (p
 connection while there is sound: after SILENCE_S seconds of silence it disconnects, so the Brick's amp can mute, go Hi-Z and
 power down, and it reconnects as soon as sound starts (about 0.2 s of pre-buffering at the Brick). No ffmpeg needed.
 
+Volume: VB-Cable ignores Windows' volume and mute, and carries no volume information. So the sender follows the cable device's
+Windows volume (media keys, mixer slider) and sets the Brick's own amp volume to match (POST /volume?level=0..1, from -70 dB up to
+the speaker profile's cap), which keeps the full 16-bit resolution at low volumes. Mute silences the stream on the PC. To stay safe
+the Brick's volume goes UP in small steps only (at most 0.05 of the range, about 2 dB, every 0.25 s) and never jumps; down is
+immediate. At start the Windows slider is set to the Brick's current level instead of the other way round, and changes made on
+the Brick's web page are copied back to the slider. Needs pycaw (pip install pycaw), otherwise the volume is not followed.
+
 The Brick's address defaults to audiobrick.local. The password is read from the AUDIOBRICK_PASSWORD environment variable or from
 %APPDATA%/audiobrick/password (one line). Only one copy runs at a time.
 """
 import argparse
+import json
 import os
 import queue
 import socket
 import sys
+import threading
 import time
+import urllib.request
 from pathlib import Path
 
 import numpy as np
@@ -26,6 +36,8 @@ import sounddevice as sd
 FS = 48000
 SILENCE_S = 5.0        # disconnect after this long without sound
 THRESHOLD = 0.0005     # peak (full scale 1.0) above which a block counts as sound, about -66 dBFS
+UP_STEP = 0.05         # largest increase of the Brick's volume per request (fraction of its -70 dB .. cap range, about 2 dB)
+UP_INTERVAL_S = 0.25
 LOG = Path(os.environ.get("TEMP", ".")) / "brick_sender.log"
 verbose = False
 
@@ -50,6 +62,78 @@ def password():
         if f.exists():
             pw = f.read_text(encoding="utf-8").strip()
     return pw
+
+
+class VolumeFollower(threading.Thread):
+    """Windows volume slider -> Brick amp volume; Windows mute -> silence on the PC. See the module docstring."""
+
+    def __init__(self, host, pw):
+        super().__init__(daemon=True)
+        self.host, self.pw = host, pw
+        self.muted = False
+
+    def brick(self, path, method="GET"):
+        ip = socket.gethostbyname(self.host)
+        req = urllib.request.Request(f"http://{ip}{path}", data=b"" if method == "POST" else None,
+                                     headers={"X-Token": self.pw}, method=method)
+        with urllib.request.urlopen(req, timeout=4) as r:
+            return json.loads(r.read())
+
+    def brick_level(self):
+        return float(self.brick("/status")["volume_level"])
+
+    def run(self):
+        try:
+            import warnings
+            import comtypes
+            warnings.filterwarnings("ignore")
+            from pycaw.pycaw import AudioUtilities
+        except ImportError:
+            log("pycaw is not installed: Windows volume keys will not change the volume (pip install pycaw)")
+            return
+        comtypes.CoInitialize()
+        vol = None
+        sent = None            # the Brick level we last set or saw
+        last_win = None        # the Windows slider position we last set or saw
+        last_push = 0.0
+        last_poll = 0.0
+        while True:
+            try:
+                if vol is None:
+                    for d in AudioUtilities.GetAllDevices():
+                        n = d.FriendlyName or ""
+                        if "VB-Audio Virtual Cable" in n and not n.startswith("CABLE Output"):
+                            vol = d.EndpointVolume
+                            break
+                    if vol is None:
+                        time.sleep(5)
+                        continue
+                    sent = self.brick_level()
+                    vol.SetMasterVolumeLevelScalar(sent, None)  # the slider starts at the Brick's level, never the other way round
+                    last_win = float(vol.GetMasterVolumeLevelScalar())
+                    log(f"following the Windows volume (Brick is at {sent:.2f})")
+                self.muted = bool(vol.GetMute())
+                now = time.time()
+                win = float(vol.GetMasterVolumeLevelScalar())
+                if abs(win - last_win) > 0.004:                       # the user moved the Windows slider
+                    last_win = win
+                if abs(last_win - sent) > 0.004 and now - last_push >= UP_INTERVAL_S:
+                    target = min(last_win, sent + UP_STEP)            # up in small steps, down at once
+                    sent = float(self.brick(f"/volume?level={target:.3f}", "POST").get("vol_db") is not None and target)
+                    last_push = now
+                elif abs(last_win - sent) <= 0.004 and now - last_poll > 5.0:
+                    last_poll = now                                    # changed on the Brick's own page? copy it to the slider
+                    cur = self.brick_level()
+                    if abs(cur - sent) > 0.04:  # the Brick works in whole dB (0.026 of the range)
+                        sent = cur
+                        vol.SetMasterVolumeLevelScalar(cur, None)
+                        last_win = float(vol.GetMasterVolumeLevelScalar())
+                time.sleep(0.1)
+            except Exception as e:
+                log(f"volume follower: {type(e).__name__}: {e}")
+                if vol is not None and "COM" in type(e).__name__:
+                    vol = None
+                time.sleep(3)
 
 
 def find_cable_output():
@@ -90,6 +174,9 @@ def run(host):
         except queue.Full:
             pass  # the sender is stuck; drop rather than grow
 
+    vf = VolumeFollower(host, pw)
+    vf.start()
+    prev_gain = 1.0
     sock = None
     last_loud = 0.0
     dev = None
@@ -111,6 +198,10 @@ def run(host):
             except queue.Empty:
                 block = None
             now = time.time()
+            if block is not None:
+                g = 0.0 if vf.muted else 1.0  # Windows mute; ramped within the block to avoid clicks
+                block = block * np.linspace(prev_gain, g, len(block), dtype="float32")[:, None]
+                prev_gain = g
             if block is not None and float(np.max(np.abs(block))) > THRESHOLD:
                 last_loud = now
             if sock is None and now - last_loud < 1.0 and block is not None:
