@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Audio Brick</title>
+<style>
+:root{--bg:#f3f4f6;--fg:#1b1f24;--mut:#626b76;--card:#fff;--line:#dde0e5;--acc:#1b6ef3;--ok:#18924f;--bad:#d33232;--warn:#b86e00}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1317;--fg:#e8eaed;--mut:#9aa0a6;--card:#181d23;--line:#2b323a;--acc:#5aa9ff;--ok:#3ddc84;--bad:#ff6b6b;--warn:#ffb74d}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:760px;margin:0 auto;padding:16px 16px 40px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{font-size:21px;margin:0}
+h2{font-size:13px;margin:0 0 10px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin:8px 0}
+label{display:flex;flex-direction:column;font-size:12px;color:var(--mut);gap:3px;flex:1 1 130px}
+input[type=text],input[type=number],input[type=password],input[type=file]{padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit;width:100%}
+button{padding:8px 15px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit;cursor:pointer}
+button:hover{border-color:var(--acc)}
+button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+button.danger{color:var(--bad)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:99px;border:1px solid var(--line);font-size:12.5px;background:var(--card)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--mut)}
+.ok .dot{background:var(--ok)}.bad .dot{background:var(--bad)}.warn .dot{background:var(--warn)}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}.mut{color:var(--mut)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.stat{padding:8px 0}
+.stat b{display:block;font-size:24px;font-weight:600;line-height:1.15}
+.stat span{font-size:12px;color:var(--mut)}
+.meter{height:12px;border-radius:6px;background:var(--bg);border:1px solid var(--line);overflow:hidden}
+.meter i{display:block;height:100%;width:0;background:var(--ok);transition:width .25s,background .25s}
+#msg{min-height:1.3em;font-size:13px;margin-top:6px}
+.tablewrap{overflow-x:auto}
+table.ct{width:100%;border-collapse:collapse;font-size:14px}
+.ct th{text-align:left;font-size:12px;font-weight:500;color:var(--mut);padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+.ct td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.ct tbody tr:hover td{background:color-mix(in srgb, var(--acc) 7%, transparent)}
+.ct tr.now td{background:color-mix(in srgb, var(--ok) 16%, transparent)}
+.ct td.nm{font-weight:500;word-break:break-all}
+.ct td.sz{color:var(--mut);white-space:nowrap}
+.ct td.act{white-space:nowrap;text-align:right}
+.ct td.act>*{margin-left:4px}
+.pbtn{width:36px;height:36px;border-radius:50%;padding:0;font-size:14px;line-height:1;background:var(--acc);border-color:var(--acc);color:#fff}
+.sm{padding:5px 10px;font-size:13px}
+a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:var(--fg);text-decoration:none;background:var(--bg)}
+.hide{display:none!important}
+.small{font-size:12px}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div><h1>Audio Brick</h1><div class="mut small" id="ver">connecting…</div></div>
+    <div id="who"><button class="primary" id="goLogin">Log in</button><button id="logout" class="hide">Log out</button></div>
+  </header>
+
+  <div class="card">
+    <h2>Status</h2>
+    <div style="margin-bottom:8px">
+      <span class="chip" id="cNet"><i class="dot"></i><span>network</span></span>
+      <span class="chip" id="cAmp"><i class="dot"></i><span>amp</span></span>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="sPvdd">–</b><span>supply (PVDD, V)</span></div>
+      <div class="stat"><b id="sVol">–</b><span>amp volume (dB)</span></div>
+      <div class="stat"><b id="sUp">–</b><span>uptime</span></div>
+      <div class="stat"><b id="sIp">–</b><span>address</span></div>
+    </div>
+  </div>
+
+  <div class="card" id="protCard">
+    <h2>Amp protection</h2>
+    <div id="alerts" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+    <div class="row" style="margin-top:10px;align-items:center">
+      <span class="small mut" id="protNote">Reads the amp chip's fault and warning registers. Faults stay latched until cleared.</span>
+      <button id="clearFaults" class="hide">Clear latched faults</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Estimated loudness</h2>
+    <div class="stats">
+      <div class="stat"><b id="eSpl">–</b><span>dB SPL (at listening distance)</span></div>
+      <div class="stat"><b id="eV">–</b><span>volts rms</span></div>
+      <div class="stat"><b id="eW">–</b><span>watts per channel</span></div>
+    </div>
+    <div class="meter" style="margin-top:8px"><i id="eBar"></i></div>
+    <div class="mut small" style="margin-top:6px" id="eNote">Calculated from the speaker profile, not measured. The bar fills toward your loudness limit.</div>
+  </div>
+
+  <div class="card" id="playCard">
+    <h2>Playback: stream and clips</h2>
+    <div class="row" style="align-items:center"><span id="mstate" class="mut">Idle</span><button class="danger auth hide" id="mstop">Stop</button></div>
+    <div class="row auth hide"><label><span>Volume: <b id="mvolV">-45</b> dB (amp; capped at <span id="mvolCap">–</span> dB by the speaker profile)</span>
+      <input type="range" id="mvol" min="-70" max="-31" step="1" value="-45"></label></div>
+    <div class="mut small">Same safe steps as the tone slider: each step up is limited to 2 dB and Page Up/Down, Home and End are disabled.</div>
+
+    <h2 style="margin-top:16px">Network stream</h2>
+    <div class="small mut">The board listens on TCP port 4010. From a PC run
+      <code>python tools/stream.py 192.168.2.40 song.mp3</code>, or add <code>--device "CABLE Output (VB-Audio Virtual Cable)"</code> to send system audio.
+      The password is asked on the command line.</div>
+  </div>
+
+  <div class="card" id="clipCard">
+    <h2>Clip manager</h2>
+    <div class="meter"><i id="spBar" style="width:0"></i></div>
+    <div class="mut small" id="clipSpace" style="margin:4px 0 8px"></div>
+    <div id="clipList"></div>
+    <div class="auth hide" id="dropZone" style="border:2px dashed var(--line);border-radius:10px;padding:14px;text-align:center;margin-top:10px">
+      Drop .mp3 or .wav files here, or
+      <label style="display:inline;flex:none;color:var(--acc);cursor:pointer;text-decoration:underline;font-size:inherit">choose files<input type="file" id="clipFile" accept=".mp3,.wav" multiple class="hide"></label>
+      <div class="mut small" id="upStatus"></div>
+    </div>
+    <div class="mut small" style="margin-top:6px">MP3 (any bit rate) and 16-bit WAV play; other sample rates are converted. Names: letters, digits, dot, dash, underscore. Mono 96 kbps MP3 is about 12 KB per second, so the 12 MB holds roughly 15 minutes. Do not upload or delete while something is playing (flash writes can glitch the sound).</div>
+  </div>
+
+  <div class="card" id="loginCard">
+    <h2>Log in</h2>
+    <div class="row"><label>Password<input type="password" id="pw" autocomplete="current-password" placeholder="shown on the serial log at first boot"></label>
+    <button class="primary" id="doLogin">Log in</button></div>
+    <div class="mut small">Stays logged in on this browser for 30 days. The page uses plain HTTP, so use it on your own network only.</div>
+  </div>
+
+  <section id="locked" class="hide">
+    <div class="card">
+      <h2>Test tone</h2>
+      <div class="row">
+        <button class="primary" id="on">Play (starts quiet)</button>
+        <button class="danger" id="off">Stop</button>
+        <span class="mut small" id="tstate"></span>
+      </div>
+      <div class="row"><label><span>Volume: <b id="loudV">30</b> dB SPL (estimated) · limit <span id="loudMax">–</span> dB</span>
+        <input type="range" id="loud" min="30" max="70" step="1" value="30"></label></div>
+      <div class="row"><label><span>Frequency: <b id="freqV">440</b> Hz</span>
+        <input type="range" id="freqS" min="0" max="1000" step="1" value="0"></label></div>
+      <div class="mut small">Safe sliders: each step up is limited to 2 dB, so clicking the track or dragging fast cannot jump to a loud level. Page Up/Down, Home and End are disabled. Press Esc to stop. The tone also stops by itself within 15 seconds if this page is closed or loses the connection.</div>
+    </div>
+
+    <div class="card">
+      <h2>Speaker EQ</h2>
+      <div class="row" style="align-items:center">
+        <label style="flex:0 0 auto;flex-direction:row;align-items:center;gap:8px;color:var(--fg);font-size:14px"><input type="checkbox" id="eqOn" style="width:auto"> EQ enabled</label>
+        <span class="mut small" id="eqPre"></span>
+      </div>
+      <canvas id="eqPlot" width="680" height="190" style="width:100%;height:auto;border:1px solid var(--line);border-radius:8px"></canvas>
+      <div id="eqRows"></div>
+      <div class="row"><button class="primary" id="eqApply">Apply</button><button id="eqReset">Reset to starter preset</button></div>
+      <div class="mut small">The same filters run on both channels, for tones, streams and clips. The preamp is automatic: it cancels the largest boost, so the EQ never raises the level above the loudness cap. Limits: 20–20000 Hz, Q 0.2–10, gain −15 to +6 dB. Untick "EQ enabled" and press Apply to compare with the bare sound.</div>
+    </div>
+
+    <div class="card">
+      <h2>Speaker profile and limits</h2>
+      <div class="row"><label>Name<input type="text" id="pname" maxlength="23"></label></div>
+      <div class="row">
+        <label>Impedance (ohm)<input type="number" id="pohms" step="0.1"></label>
+        <label>Sensitivity (dB @ 2.83 V, 1 m)<input type="number" id="psens" step="0.5"></label>
+        <label>Listening distance (m)<input type="number" id="pdist" step="0.1"></label>
+      </div>
+      <div class="row">
+        <label>Maximum loudness (dB SPL)<input type="number" id="pmax" step="1"></label>
+        <label>Rated power (W)<input type="number" id="prated" step="1"></label>
+        <label>Lowest tone (Hz)<input type="number" id="pmin" step="10"></label>
+      </div>
+      <div class="row"><button class="primary" id="save">Save profile</button></div>
+      <div class="mut small" id="pderived"></div>
+    </div>
+
+    <div class="card">
+      <h2>Firmware update</h2>
+      <div class="row"><label>Firmware file (audiobrick.bin)<input type="file" id="fw" accept=".bin"></label><button id="upload">Upload and restart</button></div>
+      <div class="mut small">The board keeps the previous image and rolls back if the new one does not come online.</div>
+    </div>
+
+    <div class="card">
+      <h2>Password</h2>
+      <div class="row"><label>New password (8–63 characters, no spaces)<input type="password" id="npw" autocomplete="new-password"></label><button id="chpw">Change password</button></div>
+    </div>
+  </section>
+  <div id="msg"></div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const say=(t,bad)=>{const m=$('msg');m.textContent=t;m.className=bad?'bad':'mut'};
+let loggedIn=false,prof=null;
+
+async function call(url,opts){
+  try{
+    const r=await fetch(url,Object.assign({method:'POST',credentials:'same-origin'},opts||{}));
+    const t=await r.text();
+    if(r.status===401&&loggedIn){setLogin(false)}
+    if(!r.ok){say(t.trim()||('error '+r.status),true);return null}
+    say('');return t;
+  }catch(e){say('request failed',true);return null}
+}
+function setLogin(v){
+  loggedIn=v;
+  $('locked').classList.toggle('hide',!v);
+  $('loginCard').classList.toggle('hide',v);
+  $('goLogin').classList.toggle('hide',v);
+  $('logout').classList.toggle('hide',!v);
+  $('clearFaults').classList.toggle('hide',!v);
+  document.querySelectorAll('.auth').forEach(e=>e.classList.toggle('hide',!v));
+  loadClips();
+  if(v){loadProfile();loadEq()}
+}
+async function checkSession(){
+  try{const s=await (await fetch('/session',{credentials:'same-origin'})).json();setLogin(!!s.logged_in)}catch(e){}
+}
+async function loadProfile(){
+  const p=await (await fetch('/profile')).json();prof=p;
+  $('pname').value=p.name;$('pohms').value=p.ohms;$('psens').value=p.sens;$('pdist').value=p.dist;
+  $('pmax').value=p.maxspl;$('prated').value=p.ratedw;$('pmin').value=p.minhz;
+  $('pderived').textContent='Derived limit: '+p.max_vrms.toFixed(2)+' V rms at most; amp volume is capped at '+p.max_vol_db+' dB.';
+  $('loud').max=p.maxspl;$('loudMax').textContent=p.maxspl;
+  $('mvol').max=p.max_vol_db;$('mvolCap').textContent=p.max_vol_db;
+  if(appliedVol>p.max_vol_db){appliedVol=p.max_vol_db;$('mvol').value=appliedVol;$('mvolV').textContent=appliedVol}
+  if(appliedLoud>p.maxspl){appliedLoud=p.maxspl;$('loud').value=appliedLoud}
+  showTone();
+}
+// Amp fault/warning decoding (TAS5825M registers 0x70-0x73, datasheet bit meanings).
+function tempText(w){return w&8?'146 °C':w&4?'134 °C':w&2?'122 °C':w&1?'112 °C':''}
+const ALERTS=[
+  ['Overload (current limiting)',(r)=>(r.warning&0x30)||(r.fault2&0x06),'warn'],
+  ['Short circuit',(r)=>r.chan_fault&0x03,'bad'],
+  ['DC on output',(r)=>r.chan_fault&0x0C,'bad'],
+  ['Over-temperature shutdown',(r)=>r.fault2&0x01,'bad'],
+  ['Getting hot',(r)=>r.warning&0x0F,'warn',(r)=>' ≥ '+tempText(r.warning&0x0F)],
+  ['Supply too low',(r)=>r.fault1&0x01,'bad'],
+  ['Supply too high',(r)=>r.fault1&0x02,'bad'],
+  ['Clock lost',(r)=>r.fault1&0x04,'bad'],
+  ['Clipping (supply too low for this level)',(r,s)=>s.clip,'warn']
+];
+function showAlerts(s){
+  const r=s.regs;let active=0,html='';
+  for(const [label,test,level,extra] of ALERTS){
+    const on=!!test(r,s);if(on)active++;
+    html+='<span class="chip '+(on?level:'ok')+'"><i class="dot"></i><span>'+label+(on&&extra?extra(r):'')+'</span></span>';
+  }
+  $('alerts').innerHTML=html;
+  $('protNote').textContent=active?'Attention: '+active+' condition'+(active>1?'s':'')+' active or latched. Lower the volume, check the speaker wiring and load, then clear.'
+    :'All clear. Reads the amp chip\'s fault and warning registers; faults stay latched until cleared.';
+}
+// ---- playback volume, stream status and clips ---------------------------------------------
+let appliedVol=-45,volSynced=false,volTimer=null,clipsShown=false,lastFree=-1;
+$('mvol').addEventListener('input',()=>{
+  let v=+$('mvol').value;
+  if(v>appliedVol+UP_STEP)v=appliedVol+UP_STEP;   // never jump up
+  $('mvol').value=v;appliedVol=v;$('mvolV').textContent=v;
+  clearTimeout(volTimer);volTimer=setTimeout(()=>call('/volume?db='+v).then(poll),120);
+});
+$('mvol').addEventListener('keydown',e=>{if(['PageUp','PageDown','Home','End'].includes(e.key))e.preventDefault()});
+$('mstop').onclick=async()=>{await call('/media/stop');poll()};
+function fmtSize(b){return b>=1048576?(b/1048576).toFixed(1)+' MB':Math.max(1,Math.round(b/1024))+' KB'}
+let nowClip='';
+function markPlaying(){
+  document.querySelectorAll('#clipList tr[data-name]').forEach(r=>{
+    const on=r.dataset.name===nowClip;
+    r.classList.toggle('now',on);
+    const pb=r.querySelector('.pbtn');
+    if(pb){pb.textContent=on?'■':'▶';pb.title=on?'Stop':'Play'}
+  });
+}
+async function loadClips(){
+  try{
+    const c=await (await fetch('/clips')).json();clipsShown=true;
+    $('spBar').style.width=c.total?((c.total-c.free)/c.total*100)+'%':'0%';
+    $('clipSpace').textContent=c.total?(fmtSize(c.total-c.free)+' used of '+fmtSize(c.total)+' ('+fmtSize(c.free)+' free) · '+c.files.length+' clip'+(c.files.length===1?'':'s')):'Storage not available (the partition table has not been installed).';
+    const box=$('clipList');box.textContent='';
+    if(!c.files.length){box.textContent='No clips yet.';return}
+    c.files.sort((a,b)=>a.name.localeCompare(b.name));
+    const wrap=document.createElement('div');wrap.className='tablewrap';
+    const t=document.createElement('table');t.className='ct';
+    const hr=t.createTHead().insertRow();
+    (loggedIn?['','Clip','Size','Loop','']:['Clip','Size']).forEach(h=>{const th=document.createElement('th');th.textContent=h;hr.appendChild(th)});
+    const body=t.createTBody();
+    for(const f of c.files){
+      const tr=body.insertRow();tr.dataset.name=f.name;
+      let cb=null;
+      if(loggedIn){
+        cb=document.createElement('input');cb.type='checkbox';cb.title='Repeat until stopped';
+        const pb=document.createElement('button');pb.className='pbtn';pb.textContent='▶';pb.title='Play';
+        pb.onclick=async()=>{
+          if(nowClip===f.name){await call('/media/stop')}
+          else{await call('/clips/play?name='+encodeURIComponent(f.name)+(cb.checked?'&loop=1':''))}
+          poll();
+        };
+        tr.insertCell().appendChild(pb);
+      }
+      const nameCell=tr.insertCell();nameCell.textContent=f.name;nameCell.className='nm';
+      const sizeCell=tr.insertCell();sizeCell.textContent=fmtSize(f.size);sizeCell.className='sz';
+      if(loggedIn){
+        const lc=tr.insertCell();lc.style.textAlign='center';lc.appendChild(cb);
+        const ac=tr.insertCell();ac.className='act';
+        const dl=document.createElement('a');dl.href='/clips/download?name='+encodeURIComponent(f.name);dl.textContent='Download';dl.className='btn sm';
+        const rn=document.createElement('button');rn.textContent='Rename';rn.className='sm';
+        rn.onclick=async()=>{
+          const to=prompt('New name (keep the .'+f.name.split('.').pop()+' ending)',f.name);
+          if(to&&to!==f.name&&await call('/clips/rename?name='+encodeURIComponent(f.name)+'&to='+encodeURIComponent(to)))loadClips();
+        };
+        const dd=document.createElement('button');dd.textContent='Delete';dd.className='sm danger';
+        dd.onclick=async()=>{if(confirm('Delete '+f.name+'?')&&await call('/clips/delete?name='+encodeURIComponent(f.name)))loadClips()};
+        ac.appendChild(dl);ac.appendChild(rn);ac.appendChild(dd);
+      }
+    }
+    wrap.appendChild(t);box.appendChild(wrap);
+    markPlaying();
+  }catch(e){say('Could not load the clip list: '+e,true)}
+}
+function uploadFile(f){
+  return new Promise(res=>{
+    const name=f.name.replace(/[^A-Za-z0-9._-]/g,'_');
+    const x=new XMLHttpRequest();x.open('POST','/clips/upload?name='+encodeURIComponent(name));
+    x.upload.onprogress=e=>{if(e.lengthComputable)$('upStatus').textContent='Uploading '+name+'  '+Math.round(e.loaded/e.total*100)+'%'};
+    x.onload=()=>{if(x.status===200)res(true);else{say(x.responseText.trim()||'upload failed',true);res(false)}};
+    x.onerror=()=>{say('upload failed',true);res(false)};
+    x.send(f);
+  });
+}
+async function uploadFiles(files){
+  let ok=0;
+  for(const f of files){if(await uploadFile(f))ok++;else break}
+  $('upStatus').textContent=ok?('Stored '+ok+' file'+(ok>1?'s':'')+'.'):'';
+  $('clipFile').value='';loadClips();
+}
+$('clipFile').addEventListener('change',e=>uploadFiles(e.target.files));
+const dz=$('dropZone');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.style.borderColor='var(--acc)'});
+dz.addEventListener('dragleave',()=>{dz.style.borderColor=''});
+dz.addEventListener('drop',e=>{e.preventDefault();dz.style.borderColor='';uploadFiles(e.dataTransfer.files)});
+// ---- speaker EQ (same RBJ filters as the firmware, for the live preview) ------------------
+const EQ_TYPES=['Peak','Low shelf','High shelf'];
+function bqDb(b,f){
+  const fs=48000,A=Math.pow(10,b.g/40),w0=2*Math.PI*b.f/fs,cw=Math.cos(w0),sw=Math.sin(w0),al=sw/(2*b.q),s=2*Math.sqrt(A)*al;
+  let b0,b1,b2,a0,a1,a2;
+  if(b.type===1){b0=A*((A+1)-(A-1)*cw+s);b1=2*A*((A-1)-(A+1)*cw);b2=A*((A+1)-(A-1)*cw-s);a0=(A+1)+(A-1)*cw+s;a1=-2*((A-1)+(A+1)*cw);a2=(A+1)+(A-1)*cw-s}
+  else if(b.type===2){b0=A*((A+1)+(A-1)*cw+s);b1=-2*A*((A-1)+(A+1)*cw);b2=A*((A+1)+(A-1)*cw-s);a0=(A+1)-(A-1)*cw+s;a1=2*((A-1)-(A+1)*cw);a2=(A+1)-(A-1)*cw-s}
+  else{b0=1+al*A;b1=-2*cw;b2=1-al*A;a0=1+al/A;a1=-2*cw;a2=1-al/A}
+  const w=2*Math.PI*f/fs,c1=Math.cos(w),s1=Math.sin(w),c2=Math.cos(2*w),s2=Math.sin(2*w);
+  const nr=b0+b1*c1+b2*c2,ni=-(b1*s1+b2*s2),dr=a0+a1*c1+a2*c2,di=-(a1*s1+a2*s2);
+  return 10*Math.log10((nr*nr+ni*ni+1e-20)/(dr*dr+di*di+1e-20));
+}
+function readEq(){
+  const bands=[];
+  for(let i=0;i<6;i++){
+    const r=document.getElementById('eqr'+i);
+    bands.push({on:r.querySelector('.on').checked,type:+r.querySelector('.ty').value,
+      f:+r.querySelector('.fq').value,q:+r.querySelector('.qq').value,g:+r.querySelector('.gg').value});
+  }
+  return bands;
+}
+function drawEq(){
+  const cv=$('eqPlot'),ctx=cv.getContext('2d'),W=cv.width,H=cv.height;
+  const css=getComputedStyle(document.documentElement);
+  const col=n=>css.getPropertyValue(n).trim();
+  ctx.clearRect(0,0,W,H);ctx.fillStyle=col('--card');ctx.fillRect(0,0,W,H);
+  const X=f=>40+(Math.log10(f)-Math.log10(20))/3*(W-50), Y=d=>10+(12-d)/24*(H-30);
+  ctx.strokeStyle=col('--line');ctx.fillStyle=col('--mut');ctx.font='11px system-ui';ctx.lineWidth=1;
+  for(const d of [-12,-6,0,6,12]){ctx.beginPath();ctx.moveTo(40,Y(d));ctx.lineTo(W-10,Y(d));ctx.stroke();ctx.fillText((d>0?'+':'')+d,8,Y(d)+4)}
+  for(const f of [20,50,100,200,500,1000,2000,5000,10000,20000]){ctx.beginPath();ctx.moveTo(X(f),10);ctx.lineTo(X(f),H-20);ctx.stroke();
+    ctx.fillText(f>=1000?(f/1000)+'k':f,X(f)-8,H-6)}
+  const bands=readEq().filter(b=>b.on),pts=[];let peak=0;
+  for(let i=0;i<=240;i++){const f=20*Math.pow(1000,i/240);let d=0;for(const b of bands)d+=bqDb(b,f);pts.push([f,d]);if(d>peak)peak=d}
+  const on=$('eqOn').checked;
+  ctx.strokeStyle=col('--acc');ctx.lineWidth=2;ctx.beginPath();
+  pts.forEach(([f,d],i)=>{const y=Y(Math.max(-12,Math.min(12,on?d-peak:0)));i?ctx.lineTo(X(f),y):ctx.moveTo(X(f),y)});ctx.stroke();
+  $('eqPre').textContent=on?('automatic preamp '+(-peak).toFixed(1)+' dB (total change shown; 0 dB = unchanged)'):'bypassed';
+}
+function buildEq(c){
+  $('eqOn').checked=c.enabled;
+  const box=$('eqRows');box.textContent='';
+  c.bands.forEach((b,i)=>{
+    const r=document.createElement('div');r.className='row';r.id='eqr'+i;r.style.margin='4px 0';
+    r.innerHTML='<label style="flex:0 0 46px">On<input type="checkbox" class="on" style="width:auto"></label>'+
+      '<label>Type<select class="ty" style="padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit"></select></label>'+
+      '<label>Freq (Hz)<input type="number" class="fq" min="20" max="20000" step="10"></label>'+
+      '<label>Q<input type="number" class="qq" min="0.2" max="10" step="0.1"></label>'+
+      '<label>Gain (dB)<input type="number" class="gg" min="-15" max="6" step="0.5"></label>';
+    const sel=r.querySelector('.ty');EQ_TYPES.forEach((t,k)=>{const o=document.createElement('option');o.value=k;o.textContent=t;sel.appendChild(o)});
+    r.querySelector('.on').checked=!!b.on;sel.value=b.type;r.querySelector('.fq').value=b.f;r.querySelector('.qq').value=b.q;r.querySelector('.gg').value=b.g;
+    r.addEventListener('input',drawEq);box.appendChild(r);
+  });
+  drawEq();
+}
+async function loadEq(){try{buildEq(await (await fetch('/eq')).json())}catch(e){say('Could not load the EQ: '+e,true)}}
+$('eqOn').addEventListener('change',drawEq);
+$('eqApply').onclick=async()=>{
+  const lines=['enabled='+($('eqOn').checked?1:0)];
+  readEq().forEach((b,i)=>lines.push('b'+i+'='+(b.on?1:0)+','+b.type+','+b.f+','+b.q+','+b.g));
+  const t=await call('/eq',{body:lines.join('\n')});
+  if(t){buildEq(JSON.parse(t));say('EQ applied.')}
+};
+$('eqReset').onclick=async()=>{const t=await call('/eq/reset');if(t){buildEq(JSON.parse(t));say('Starter preset restored.')}};
+function fmtUp(s){const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);
+  return d?d+'d '+h+'h':(h?h+'h '+m+'m':m+'m '+(s%60)+'s')}
+async function poll(){
+  try{
+    const s=await (await fetch('/status')).json();
+    $('ver').textContent='firmware '+s.version+' · '+s.partition;
+    $('sPvdd').textContent=s.pvdd_v>0?s.pvdd_v.toFixed(2):'–';
+    $('sVol').textContent=s.vol_db;
+    $('sUp').textContent=fmtUp(s.uptime_s);
+    $('sIp').textContent=s.ip||'–';
+    showAlerts(s);
+    const net=$('cNet'),amp=$('cAmp');
+    net.className='chip '+(s.ip?'ok':'warn');net.lastChild.textContent=s.ip?'online':'no address';
+    const cls=s.fault?'bad':(s.warning?'warn':'ok');
+    amp.className='chip '+cls;amp.lastChild.textContent=s.fault?'amp fault':(s.warning?'amp warning':'amp OK');
+    $('tstate').textContent=s.tone.on?('Playing '+s.tone.freq_hz+' Hz'):'Stopped';
+    if(!s.tone.on)playing=false;   // the firmware stopped it (timeout, fault or another client)
+    if(!volSynced){appliedVol=Math.min(s.vol_db,+$('mvol').max);$('mvol').value=appliedVol;$('mvolV').textContent=appliedVol;volSynced=true}
+    const m=s.media;
+    $('mstate').textContent=m.src==='none'?'Idle':((m.src==='stream'?'Streaming':'Playing clip '+m.label)+' · buffer '+m.buffer_ms+' ms'+(m.underruns?' · '+m.underruns+' dropouts':''));
+    const np=m.src==='clip'?m.label:'';if(np!==nowClip){nowClip=np;markPlaying()}
+    if(m.src==='none'&&clipsShown&&s.storage.free!==lastFree){loadClips()}
+    lastFree=s.storage.free;
+    const e=s.est,on=s.tone.on;
+    $('eSpl').textContent=on?e.spl.toFixed(0):'–';
+    $('eV').textContent=on?e.vrms.toFixed(2):'–';
+    $('eW').textContent=on?e.watts.toFixed(2):'–';
+    if(prof){const pct=on?Math.min(100,Math.max(0,(e.spl-30)/(prof.maxspl-30)*100)):0;
+      const b=$('eBar');b.style.width=pct+'%';b.style.background=pct>90?'var(--warn)':'var(--ok)'}
+  }catch(e){$('ver').textContent='offline';$('cNet').className='chip bad';$('cNet').lastChild.textContent='offline'}
+}
+// ---- safe tone controls -----------------------------------------------------------------
+const MIN_LOUD=30, FMAX=20000, UP_STEP=2, F_STEP=60;  // dB SPL, Hz, max rise per event, max slider move per event
+let appliedLoud=MIN_LOUD, appliedFreqP=0, playing=false, sendTimer=null;
+const fMin=()=>prof?Math.max(20,prof.minhz):100;
+const fOf=p=>fMin()*Math.pow(FMAX/fMin(),p/1000);
+const pOf=f=>1000*Math.log(f/fMin())/Math.log(FMAX/fMin());
+function showTone(){
+  $('loudV').textContent=appliedLoud;
+  const f=fOf(appliedFreqP);$('freqV').textContent=f<1000?f.toFixed(0):(f/1000).toFixed(2)+'k';
+}
+// Work out tone level and amp volume for the chosen loudness: the amp volume sits at the profile cap
+// and the digital tone level does the rest, so the cap in the firmware is never needed to catch us out.
+function toneParams(){
+  const vol=prof.max_vol_db;
+  const vrms=2.83*Math.pow(10,(appliedLoud-prof.sens+20*Math.log10(prof.dist))/20);
+  const lvl=Math.min(0,20*Math.log10(vrms*Math.SQRT2/prof.fs_vpk)-vol);
+  return '&freq='+fOf(appliedFreqP).toFixed(1)+'&db='+lvl.toFixed(1)+'&vol='+vol;
+}
+async function sendTone(){
+  if(!prof||!playing)return;
+  await call('/tone?on=1&ttl=15'+toneParams());poll();
+}
+function scheduleSend(){clearTimeout(sendTimer);sendTimer=setTimeout(sendTone,120)}
+$('loud').addEventListener('input',()=>{
+  let v=+$('loud').value;
+  if(v>appliedLoud+UP_STEP)v=appliedLoud+UP_STEP;   // never jump up
+  $('loud').value=v;appliedLoud=v;showTone();scheduleSend();
+});
+$('freqS').addEventListener('input',()=>{
+  let p=+$('freqS').value;
+  p=Math.max(appliedFreqP-F_STEP,Math.min(appliedFreqP+F_STEP,p));
+  $('freqS').value=p;appliedFreqP=p;showTone();scheduleSend();
+});
+for(const id of ['loud','freqS'])$(id).addEventListener('keydown',e=>{
+  if(['PageUp','PageDown','Home','End'].includes(e.key))e.preventDefault();
+});
+async function stopTone(){playing=false;clearTimeout(sendTimer);await call('/tone?on=0');poll()}
+$('on').onclick=async()=>{
+  if(!prof)return;
+  appliedLoud=MIN_LOUD;$('loud').value=MIN_LOUD;showTone();  // always start quiet
+  playing=true;await sendTone();
+};
+$('off').onclick=stopTone;
+$('clearFaults').onclick=async()=>{if(await call('/faults/clear'))say('Latched faults cleared.');poll()};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&playing)stopTone()});
+setInterval(()=>{if(playing)sendTone()},5000);   // keeps the firmware's dead-man timer alive
+// Start the frequency slider at 440 Hz.
+function initFreq(){appliedFreqP=Math.round(pOf(440));$('freqS').value=appliedFreqP;showTone()}
+$('save').onclick=async()=>{
+  const q=new URLSearchParams({name:$('pname').value,ohms:$('pohms').value,sens:$('psens').value,
+    dist:$('pdist').value,maxspl:$('pmax').value,ratedw:$('prated').value,minhz:$('pmin').value});
+  if(await call('/profile?'+q)){say('Profile saved.');await loadProfile();poll()}
+};
+async function doLogin(){
+  if(await call('/login',{body:$('pw').value})){$('pw').value='';setLogin(true);say('Logged in.')}
+}
+$('doLogin').onclick=doLogin;
+$('pw').onkeydown=e=>{if(e.key==='Enter')doLogin()};
+$('goLogin').onclick=()=>{$('pw').focus();$('loginCard').scrollIntoView({behavior:'smooth'})};
+$('logout').onclick=async()=>{await call('/logout');setLogin(false);say('Logged out.')};
+$('chpw').onclick=async()=>{if(await call('/password',{body:$('npw').value})){$('npw').value='';say('Password changed. Other browsers were logged out.')}};
+$('upload').onclick=async()=>{
+  const f=$('fw').files[0];if(!f){say('Choose a firmware file first.',true);return}
+  say('Uploading '+f.size+' bytes…');
+  if(await call('/update',{body:f})){say('Update installed. The board is restarting.');setTimeout(()=>location.reload(),9000)}
+};
+checkSession();loadProfile().then(()=>{initFreq();poll()});setInterval(poll,1500);
+</script>
+</body>
+</html>

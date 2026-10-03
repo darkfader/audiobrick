@@ -1,0 +1,140 @@
+# Esparagus Audio Brick (ESP32 variant) - test bench
+
+Sonocotta Esparagus Audio Brick, **ESP32 (not S3)** revision, received by mistake; the S3 replacement is expected around early 2027. Keep firmware portable between the two, since pins differ (see table).
+
+Upstream: https://github.com/sonocotta/esparagus-media-center (hardware in `/hardware`, firmware in `/firmware`, ESPHome configs in `/firmware/esphome/5-audio-brick/`).
+
+## Hardware
+
+- MCU: ESP32-D0WD-V3 rev v3.1, 8 MB PSRAM. **Flash is 16 MB (verified with esptool)**; the upstream YAML's 8 MB is wrong. MAC 20:9b:a9:6f:f0:b4.
+- Serial: CH340 on COM5 (this PC). Auto-reset into download mode does NOT work. Hold BOOT (the button farther from the board edge), tap EN (the button nearer the edge), release BOOT after esptool connects.
+- DAC/amp: TI TAS5825M (I2S in, I2C control, class-D BTL out, DSP with 15-band EQ, hardware volume, fault reporting).
+- Ethernet: W5500 over SPI. Preferred transport for this project. Wi-Fi is the fallback.
+- Bluetooth: classic A2DP works on this ESP32 only, not on the S3. Optional, lower priority.
+- USB-C: CH340 serial for flashing and logs.
+- Status LED: one WS2812.
+- No OLED fitted (optional SPI SSD1306, not owned). Skip or disable display code and the `oled.yaml` ESPHome package. Use the WS2812 and serial logs for status.
+- Power: 5-26 V DC (chip max 26.4 V), up to 10 A. **Connector on the owner's board is unverified.** Upstream rev C1 schematic: DC barrel jack DC-044A-A250 (pin 1 = VDD, pins 2/5 = GND, so probably center-positive) in parallel with a 2-pin 5.08 mm terminal CN4 (CN5 unused). Crowd Supply and Elecrow list a 4-pin power connector, so the shipped board may be a newer revision than C1 (the repo has no newer files than C1/D as of 2026-10-03). Check the board and verify polarity with a multimeter.
+- Reverse polarity (rev C1): D3 (M7, about 1 A, 30 A surge) sits across VDD/GND with the cathode on VDD. It is a shunt "crowbar": it conducts on reverse polarity and shorts the supply. There is no fuse, TVS or series protection on the board. Use a current-limited or fused supply, 24 V or less. Not verified for the owner's revision.
+- Output: 4-pin snap-in speaker connector, bridged (BTL). **Never tie either output terminal to ground.** 4-8 ohm loads.
+  - 12 V: about 2x10 W into 4 ohm.
+  - 24 V: about 2x30 W into 8 ohm, or 65 W bridged mono into 4 ohm.
+
+## Pinout
+
+| Function | ESP32 (this board) | ESP32-S3 |
+|---|---|---|
+| I2S BCK | 26 | 14 |
+| I2S WS | 25 | 15 |
+| I2S DOUT | 22 | 16 |
+| I2C SDA | 21 | 8 |
+| I2C SCL | 27 | 9 |
+| DAC PWDN/enable | 33 | ? |
+| DAC FAULTZ (speaker fault) | 39 | 18 |
+| DAC WARNZ | 36 | 4 |
+| WS2812 LED | 12 | 21 |
+| SPI SCLK/MOSI/MISO | 18/23/19 | 12/11/13 |
+| W5500 CS/INT/RST | 5/35/14 | ? |
+| OLED CS/DC/RST (unused, no display) | 15/4/32 | ? |
+
+TAS5825M I2C address is **0x4C** (verified by I2C scan; the only device on the bus). FAULTZ/WARNZ read 1 (no fault) at idle. Only 4 MB of the 8 MB PSRAM is mapped by default on the ESP32. Take the ESP32-S3 `?` entries from the upstream S3 config once the S3 board arrives.
+
+## Toolchain
+
+- Flash and logs: USB-C, CH340 on COM5. Use the manual BOOT/EN sequence above before flashing.
+- Schematic (upstream rev C1, `hardware/5-esparagus-audio-brick/rev-c1/*-schematic.pdf`; board has no revision print; assumed to be C1, the latest single-DAC ESP32 revision) shows a standard CH340C auto-reset circuit: DTR/RTS -> two S8050 transistors -> EN and GPIO0. Buttons: SW4 = GPIO0 (BOOT), SW3 = MCU_RST (EN). So auto-reset should exist in hardware, yet esptool reports "Wrong boot mode 0x13". Cause not found yet.
+- Flashing recipe: user enters download mode by hand, then run from `build/`: `python -m esptool --chip esp32 -p COM5 -b 460800 --before no_reset --after hard_reset write_flash "@flash_args"`. `idf.py flash` resets via RTS, which fails here ("Wrong boot mode 0x13").
+- ESP-IDF v5.5.3 is installed at `C:\Users\darkf\git\EspHidEmulation\esp-idf`. Activate with `. C:\Users\darkf\git\EspHidEmulation\esp-idf\export.ps1`, then `idf.py`.
+- USB-C powers only the ESP32/CH340 (enough for flashing and bring-up with no speakers). The amp stage needs the DC input (12 V recommended); USB 5 V limits it to about 5 W.
+- Prebuilt streaming firmware:
+  - Squeezelite-ESP32 (LMS, Spotify Connect, AirPlay).
+  - Snapclient (multi-room sync).
+  - ESPHome media player (Home Assistant).
+  - Upstream builds with PlatformIO: `pio run -e esparagus-audio-brick -t upload`, then `-t uploadfs`.
+- Custom firmware (synth, OSC): **ESP-IDF** (`idf.py`), C or C++. No Arduino. Not PlatformIO (its IDF support lags) and not Zephyr (no TAS5825M driver, less mature ESP32 Wi-Fi/BT/PSRAM support).
+  - Required bring-up order:
+    1. Pull PWDN (GPIO33) high.
+    2. Init I2C.
+    3. Configure the TAS5825M (I2S format, volume, unmute) over I2C.
+    4. Start I2S.
+  - Poll FAULTZ and WARNZ and mute on fault.
+
+## Current firmware (v0.7.4, ESP-IDF, in this folder)
+
+- v0.7.4: gapless MP3 (`clip.c` play_mp3): skips the ID3v2 tag, reads the Xing/Info + LAME tag in the first frame, drops that metadata frame and trims encoder delay (+529 decoder delay samples) and padding, so looped clips have no 25-35 ms gap at the join. Without a tag it skips 1105 samples. Verified in the serial log ("mp3 pass: ...") on `cat_meow_1` (576 + 1504 trimmed) and `rain_window_loop` (two identical 24.20 s passes). Not yet confirmed by ear. The EQ applies to clips like every other source (same audio task).
+- Planned, not built: a random-timing player (pick clips, min/max interval, volume; for example a meow every 5-20 min, typing bursts, rain loop underneath).
+
+- v0.7.3: lwIP socket pool raised to 16 (`CONFIG_LWIP_MAX_SOCKETS`, web server max_open_sockets 8). With the old 10 the web server stopped accepting connections ("httpd_accept_conn: error in accept (23)") when a browser tab kept connections open next to the stream port; symptoms were curl exit 56 and empty replies, and a delete pass that silently did nothing. If that happens again, close browser tabs and wait about 30 s. Boot volume default -38 dB (cap -31 dB). Index page is sent with `Cache-Control: no-cache`.
+- Web page checked in a real browser (Playwright, 2026-10-03): clip table with round play buttons, loop checkbox, EQ card with plot, no console errors. A script edit once deleted the whole EQ block and `node --check` did not notice; check for undefined functions too, and test the page in a browser after JS edits.
+- Clips on the board (15, 2.5 MB) are in `clips/` with `ATTRIBUTION.md`: long ones normalised to -18 LUFS, short ones to -3 dBFS peak, five ambient ones (rain, PC fan, fridge, kettle, birds) are seamless crossfaded loops named `*_loop.mp3`. The loop feature (checkbox in the clip table, `loop=1`) repeats until stopped. W5500 note: the ESP-IDF driver runs it in MAC-raw mode with lwIP on the ESP, so its 8 hardware sockets are not used; limits are the SPI link (20 MHz) and the ESP's lwIP.
+- Git: the repo is initialised locally (no remote). `.gitignore` excludes build/, sdkconfig, managed_components, recordings (`measurements/*.wav`) and browser scratch. The web password is never stored in the repo.
+
+### Older notes (v0.7.0)
+
+- v0.7.0 adds a software speaker EQ (`eq.c`, `eq_http.c`): up to 6 RBJ biquad bands (peaking, low shelf, high shelf), identical on both channels, applied to every source in the audio task; settings in NVS; automatic preamp cancels the largest boost; endpoints `GET /eq`, `POST /eq` (text body lines `enabled=1`, `b0=on,type,freq,q,gain`), `POST /eq/reset`; page card with live response plot. Starter preset (from the right NS-B40 measurement): peak 250 Hz Q0.8 -3 dB, high shelf 6 kHz Q0.7 +3 dB, so preamp -3 dB. Verified acoustically: change within about 1 dB of design from 400 Hz to 10 kHz; 100-315 Hz measured deeper than designed (up to 4 dB at 160-200 Hz), probably measurement error in the bass.
+- Right NS-B40 (cleaner, 3 runs, padded setup): bump +4 dB at 250 Hz, notch about -13 dB near 2.2 kHz (also on the left), roll-off above 6 kHz (-14 dB at 8 kHz, -28 dB at 10-12 kHz). Both speakers are the same model, so one EQ serves both.
+- v0.7.1: clip manager on the page (storage bar, drag-and-drop multi-upload with progress, per-clip play/loop/stop/download/rename/delete, playing clip highlighted); firmware adds `loop=1` on `/clips/play`, `GET /clips/download` (login), `POST /clips/rename?name=&to=`. Tested: upload, rename, byte-identical download, loop past the file length, delete refused while playing.
+- Clips for a lifelike feel are collected in `clips/` (with `ATTRIBUTION.md`); ideas: cat, big cat, PC fan, typing, rain, clock. Not yet implemented: looping and random-interval triggers.
+
+### Earlier notes (v0.6.0)
+
+- v0.6.0 adds a shared player (`media.c`: 256 KB PSRAM ring, 48 kHz stereo s16, linear resampler for other rates), a TCP stream port 4010 (`stream.c`; protocol in `stream.h`; sender script `tools/stream.py`, needs ffmpeg), stored clips on the FAT `storage` partition (`clip.c`, `storage.c`; MP3 via minimp3 or 16-bit PCM WAV; `clips_http.c` endpoints `/clips`, `/clips/upload|play|delete`, `/media/stop`, `/volume`), a dead-man timer on the test tone (15 s unless refreshed), safe sliders and overload indicators on the web page. Stream tested OK (3 s test tone, no underruns). Default amp volume is now -45 dB.
+- Gotchas hit: (1) `sdkconfig.defaults` is ignored once `sdkconfig` exists; delete `sdkconfig` to apply new defaults. (2) The MP3 decoder needs a 32 KB task stack (12 KB overflowed and rebooted the board). (3) Serial flashing the new partition table once was required; since then all updates go over Ethernet. Clip test (v0.6.1): 44.1 kHz mono MP3 and 22.05 kHz mono WAV both play, no underruns; uploading or deleting clips while playing may glitch (flash writes stall the cache).
+- Speaker measurement: `tools/measure.py HOST --mic "Sennheiser Profile" [--play]` plays one quiet log sweep (80 Hz-20 kHz, 6 s, about 55 dB SPL at 1 m, left channel, refuses to exceed the profile limit) over the stream port and records it with the PC microphone; `--analyse WAV` re-processes a saved recording. Output in `measurements/` (wav, csv, png; 1/6 octave, gated 8 ms plus 60 ms). The mic's own on-axis response (`tools/mic_sennheiser_profile_0deg.csv`, digitised from the Sennheiser spec sheet; flat within about 3 dB above 125 Hz, rolls off below 100 Hz: -3 dB at 100 Hz, -17 dB at 50 Hz) is subtracted by default. First NS-B40 result (mic placement not verified): +4 dB hump near 250 Hz, dip near 3 kHz, ragged peaks 3.6/5.2/6.8 kHz (looks like cone breakup of a single full-range driver), then a steep roll-off above about 9 kHz. Do not boost narrow dips; plan is cut-only or gentle broad correction as software biquads in the audio task (not yet implemented).
+- Bug fixed in v0.6.2: the end of every stream/clip played a 100 ms full-scale 440 Hz beep (the idle tone generator inherited the media gain of 1.0). It also polluted sweep recordings made before the fix; ignore `measurements/` files from before 2026-10-03 18:40 except as rough context. Known remaining blemish: a small thump (about -62 dBFS near 220 Hz at 1 m) at the start and end of playback from the amp mute/unmute. Aborting a stream mid-signal cuts abruptly (no fade).
+- Measurement caveats: the first NS-B40 sweeps were on a bare desk (strong desk bounce, notch near 3 kHz); the padded setup after the fix repeats within about 1 dB (0.3-1 kHz and above), but still shows a steep treble loss (about -30 dB at 8 kHz) on both speakers. Not yet known whether that is the speaker, the aim of the mic, or the Brick's chain; an A/B with a different source through the same mic would tell.
+- The safe-slider rule (also used for the playback volume): each step up limited to 2 dB, Page/Home/End disabled.
+- Hearing/EQ idea queued by the user: calibrate speaker EQ with a Sennheiser Profile USB-C mic (consumer mic, no calibration file, so only relative corrections) or look up EQ for the NS-B40 online. The TAS5825M has a 15-band EQ (biquad coefficients in book 0xAA; not yet implemented).
+
+### Older notes (v0.4.0)
+
+- v0.4.0 adds: web page at `http://<ip>/` (public status, estimated loudness; cookie login unlocks tone test, speaker profile, firmware upload, password change), speaker profile + SPL limiter (`limits.c`), PVDD and fault registers in `/status`, `/tone` `vol=` parameter. Auth: POST `/login` (body = password) sets an HttpOnly 30-day `sid` cookie; scripts can still send the password as `X-Token`. Initial password = the 32-hex token printed on the serial log; changeable on the page. 5 failed logins lock out for 30 s. Plain HTTP, LAN only.
+- Loudness limiter: SPL = sens + 20 log(V/2.83) - 20 log(distance). Default profile: Yamaha NS-B40, 6 ohm, 83 dB, 1 m, **70 dB max**, 30 W, lowest tone 100 Hz. Cap enforced in `dac_set_volume_db` (volume register) and `tone_set` (min frequency); absolute ceiling 100 dB. FULLSCALE_VPK = 29.5 V (datasheet value, estimate; not calibrated).
+- USB-only measurements: PVDD about 4.39 V (the chip's PVDD ADC, reg 0x5E).
+- Partition table now includes `storage` (FAT, ~11.9 MB at 0x420000) but it is NOT yet flashed to the board; the board still has the older table without it. Flashing it needs the serial BOOT/EN procedure once. Planned: compressed clips (Opus or MP3) in storage, plus a raw PCM TCP stream (48 kHz, 16-bit stereo) for PC audio.
+
+### Earlier notes (v0.2.0 API, now superseded by the above where they differ)
+
+- Modules in `main/`: `net.c` (W5500 + DHCP, hostname audiobrick), `dac.c` (TAS5825M, init sequence from mrtoy-me/esphome-tas58xx, starts muted at -30 dB), `tone.c` (I2S 48 kHz 16-bit, sine task with 100 ms ramps; level cap -6 dBFS), `ota_http.c` (HTTP API), `main.c` (LED: blue = no IP, green = online, red = amp fault).
+- Partitions: nvs, otadata, ota_0 and ota_1 (2 MB each), rollback enabled. The image is marked valid after about 5 s online.
+- Board got 192.168.2.40 via DHCP (may change; check your router or the serial log).
+- API (token = 32 hex chars, generated on first boot, stored in NVS, printed on the serial log at every boot; send as `X-Token` header):
+  - `GET /status` (no auth): version, partition, uptime, fault/warning pins, tone state.
+  - `POST /tone?on=1&freq=440&db=-30` (auth): sine test tone. Refused while FAULTZ is active.
+  - `POST /update` (auth): body = `build/audiobrick.bin`, then it reboots.
+- OTA workflow: `idf.py build`, then `curl -X POST -H "X-Token: $T" --data-binary @build/audiobrick.bin http://<ip>/update`.
+- Serial recovery (partition table changes only): BOOT/EN download mode, then the esptool recipe above. Boot log: reset over RTS while BOOT is released.
+- Sine tone verified with speakers by the user on 2026-10-03 while powered from USB-C only (no DC supply). So the amp stage does run from USB 5 V at low power. Start at low volume. Tone starts disabled at every boot.
+
+Test speakers: two Yamaha NS-B40 satellites (6 ohm, 30 W nominal / 100 W max, 83 dB sensitivity, small drivers). Fit a 12 V supply; avoid long high-level sine tones at high frequencies (tweeter heating).
+
+## Planned experiments
+
+1. **Smoke test:** flash stock Squeezelite or Snapclient, play audio into a dummy load or speaker at 12 V, then confirm Ethernet and LED.
+2. **Synthesizer:** I2S synth on the ESP32 (wavetable or FM, 44.1 or 48 kHz stereo), controlled over MIDI-over-network or OSC.
+3. **OSC control:** UDP OSC server over W5500 Ethernet (e.g. `/synth/freq`, `/synth/vol`, `/mute`), mapping onto I2S sample generation and TAS5825M volume registers.
+4. **Bluetooth A2DP sink (optional):** ESP32 only. Ethernet remains the preferred path. Check Wi-Fi/BT coexistence if both are on.
+5. **OSC-controlled audio e-stim pattern generator:** see the safety section. Do not connect anything to the body until the safety checks are done.
+
+## E-stim safety (read before experiment 5)
+
+This board is a 5-26 V, up to 65 W amplifier. It is not a body-safe output.
+
+- Never connect electrodes directly to the speaker terminals.
+- Use a purpose-built isolation stage (audio transformer into current-limited output with series resistance), or a commercial audio-input e-stim unit that does its own isolation and limiting. Establish isolation and current limit first.
+- Develop and test on the lowest supply voltage (5 V) and a dummy load or scope. Raise the supply only after the output stage is characterized.
+- Power the whole rig from battery or an isolated supply. Do not leave a mains-connected USB host or other earth-referenced equipment attached while electrodes are on the body.
+- Never place electrodes where current can cross the chest or heart, or on the neck or head. Do not use with a pacemaker or implant.
+- Firmware must include:
+  - A hardware-backed volume cap.
+  - A hard mute on OSC timeout or network loss.
+  - A hard mute on FAULTZ.
+  - Soft-start ramps only (no step changes in amplitude).
+  - No DC offset on the output, since DC in tissue causes burns.
+- Keep a physical kill (power disconnect) within reach.
+
+## Open questions
+
+- Power connector type and polarity on the owner's actual revision (4-pin per the shop pages vs barrel jack plus 2-pin on rev C1).
+- Whether USB 5 V and the DC input can be connected at the same time.
+- Which firmware to test first.
