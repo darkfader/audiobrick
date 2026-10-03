@@ -1,4 +1,4 @@
-#include "limits.h"
+#include "speaker_limits.h"
 
 #include <math.h>
 #include <string.h>

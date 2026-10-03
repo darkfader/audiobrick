@@ -23,6 +23,7 @@ esp_err_t web_deny(httpd_req_t *req);    // sends 401
 bool web_password_ok(const char *candidate);
 void ota_http_register_more(httpd_handle_t server);  // registers the clip/media endpoints
 void eq_http_register(httpd_handle_t server);        // registers the EQ endpoints
+void ambient_http_register(httpd_handle_t server);   // registers the ambient scene and player endpoints
 
 // Mark the running image as good so the bootloader will not roll back.
 void ota_mark_valid(void);

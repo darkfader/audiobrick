@@ -37,3 +37,15 @@ All clips were re-levelled louder after the first batch turned out too quiet for
   `rain_window_1` -> `rain_window_loop`, `pc_fan_hum_1` -> `pc_fan_hum_loop`, `fridge_hum_1` -> `fridge_hum_loop`,
   `kettle_boiling_1` -> `kettle_boiling_loop`, `birds_daytime_1` -> `birds_daytime_loop`.
   The licence and source of each loop file are those of its original (see the table above). The CC BY-SA items stay CC BY-SA.
+
+## Third processing (2026-10-03): proper loops
+
+The `*_loop.mp3` clips from the second pass were only joined with a linear crossfade and were not checked. They have been
+rebuilt with `tools/make_loop.py` from the original recordings (same sources and licences as listed above): the tool searches
+the recording for the two moments that sound most alike (same loudness and tone), cuts between them and joins the end to
+the start with an equal-power crossfade, then normalises to -18 LUFS (peaks under -2 dBFS), mono, 112 kbps MP3.
+Every clip named `*_loop.mp3` must pass `tools/check_loop.py` (level step, tone change, click and dip at the join). A clip
+that does not pass is not called a loop. Current loops and their lengths: `rain_window_loop` 17.5 s, `pc_fan_hum_loop` 8.0 s,
+`fridge_hum_loop` 13.8 s, `kettle_boiling_loop` 13.3 s, `birds_daytime_loop` 22.8 s (birdsong repeats recognisably; it is the
+least steady source). Changed segments: rain 41.0-58.5 s, fan 5.25-13.25 s, fridge 2.75-16.5 s, kettle 31.25-44.5 s of the
+source files, birds 3.25-26.0 s.

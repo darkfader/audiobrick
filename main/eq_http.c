@@ -3,6 +3,8 @@
 //   POST /eq                 body: text lines "enabled=1" and "b0=on,type,freq,q,gain" ... "b5=..." (login)
 //                            type: 0 peaking, 1 low shelf, 2 high shelf
 //   POST /eq/reset           back to the starter preset (login)
+#include "sdkconfig.h"
+#if CONFIG_AB_FEATURE_EQ
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -80,3 +82,5 @@ void eq_http_register(httpd_handle_t server)
     };
     for (size_t i = 0; i < sizeof uris / sizeof uris[0]; i++) httpd_register_uri_handler(server, &uris[i]);
 }
+
+#endif  // CONFIG_AB_FEATURE_EQ

@@ -1,0 +1,46 @@
+menu "Audio Brick features"
+    # Optional features. A feature that is switched off is not compiled: no code, no web endpoints, no page card.
+    # Change with `idf.py menuconfig` (Audio Brick features) or put CONFIG_AB_FEATURE_xxx=y/n in sdkconfig.defaults
+    # (then delete sdkconfig, which is only read as a whole when it does not exist).
+    # Core parts that are always built: mixer, test tone, stored clips and player, web page with login, OTA, safe mode.
+
+    config AB_FEATURE_EQ
+        bool "Speaker EQ (six software filters)"
+        default y
+        help
+            Parametric EQ applied to every source. Small.
+
+    config AB_FEATURE_AMBIENT
+        bool "Ambient scene (looping background plus random events)"
+        default y
+        help
+            Uses the background and event mixer channels and a second MP3 decoder.
+
+    config AB_FEATURE_VBAN
+        bool "VBAN receiver (Voicemeeter network audio, UDP 6980)"
+        default y
+        help
+            Lets Voicemeeter or any VBAN sender play on the board. Works on Windows 11 (Voicemeeter's drivers are signed).
+
+    config AB_FEATURE_SCREAM
+        bool "Scream receiver (UDP 4010, unicast or multicast)"
+        default n
+        help
+            The firmware side works, but the Scream Windows driver cannot be installed normally on Windows 11: its
+            certificate expired in 2023 and no signed build exists, so installing it needs Secure Boot off and Test Mode.
+            See docs/windows-setup.md. Enable this only if you have a working Scream sender (for example Linux or a
+            Windows machine in Test Mode).
+
+    config AB_FEATURE_RADIO
+        bool "Internet radio (MP3 streams over HTTP and HTTPS)"
+        default y
+        help
+            Pulls in the HTTP client and TLS, which adds about 400 KB to the image and about 30 KB of heap while playing.
+
+    config AB_FEATURE_SYNTH
+        bool "OSC synthesizer (UDP 9000)"
+        default y
+        help
+            Eight-voice synthesizer controlled by OSC messages.
+
+endmenu

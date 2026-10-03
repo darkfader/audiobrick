@@ -6,3 +6,4 @@ dependencies.lock
 .playwright-mcp/
 .remember/
 measurements/*.wav
+build_*/

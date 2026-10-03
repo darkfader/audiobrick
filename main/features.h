@@ -1,0 +1,36 @@
+// Build-time feature switches (Kconfig menu "Audio Brick features") as plain 0/1 values.
+// In the preprocessor `#if CONFIG_AB_FEATURE_X` works; in ordinary C expressions an unset option is not defined at all,
+// so use these AB_HAS_* values there.
+#pragma once
+#include "sdkconfig.h"
+
+#ifdef CONFIG_AB_FEATURE_EQ
+#define AB_HAS_EQ 1
+#else
+#define AB_HAS_EQ 0
+#endif
+#ifdef CONFIG_AB_FEATURE_AMBIENT
+#define AB_HAS_AMBIENT 1
+#else
+#define AB_HAS_AMBIENT 0
+#endif
+#ifdef CONFIG_AB_FEATURE_VBAN
+#define AB_HAS_VBAN 1
+#else
+#define AB_HAS_VBAN 0
+#endif
+#ifdef CONFIG_AB_FEATURE_SCREAM
+#define AB_HAS_SCREAM 1
+#else
+#define AB_HAS_SCREAM 0
+#endif
+#ifdef CONFIG_AB_FEATURE_RADIO
+#define AB_HAS_RADIO 1
+#else
+#define AB_HAS_RADIO 0
+#endif
+#ifdef CONFIG_AB_FEATURE_SYNTH
+#define AB_HAS_SYNTH 1
+#else
+#define AB_HAS_SYNTH 0
+#endif

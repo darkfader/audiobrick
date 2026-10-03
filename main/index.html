@@ -93,6 +93,14 @@ a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:
   <div class="card" id="playCard">
     <h2>Playback: stream and clips</h2>
     <div class="row" style="align-items:center"><span id="mstate" class="mut">Idle</span><button class="danger auth hide" id="mstop">Stop</button></div>
+    <div class="row auth hide" style="align-items:center;gap:8px">
+      <button class="pbtn" id="tPrev" title="Previous">⏮</button>
+      <button class="pbtn" id="tPlay" title="Play">▶</button>
+      <button class="pbtn" id="tNext" title="Next">⏭</button>
+      <button class="pbtn" id="tStop" title="Stop" style="background:var(--bg);color:var(--fg);border-color:var(--line)">■</button>
+      <span class="mut small" id="tNow" style="flex:1 1 200px"></span>
+      <label style="flex:0 0 auto;flex-direction:row;align-items:center;gap:6px;color:var(--fg);font-size:13px"><input type="checkbox" id="tAuto" style="width:auto"> play next automatically</label>
+    </div>
     <div class="row auth hide"><label><span>Volume: <b id="mvolV">-45</b> dB (amp; capped at <span id="mvolCap">–</span> dB by the speaker profile)</span>
       <input type="range" id="mvol" min="-70" max="-31" step="1" value="-45"></label></div>
     <div class="mut small">Same safe steps as the tone slider: each step up is limited to 2 dB and Page Up/Down, Home and End are disabled.</div>
@@ -138,7 +146,73 @@ a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:
       <div class="mut small">Safe sliders: each step up is limited to 2 dB, so clicking the track or dragging fast cannot jump to a loud level. Page Up/Down, Home and End are disabled. Press Esc to stop. The tone also stops by itself within 15 seconds if this page is closed or loses the connection.</div>
     </div>
 
-    <div class="card">
+    <div class="card" data-feature="ambient">
+      <h2>Ambient scene</h2>
+      <div class="row" style="align-items:center">
+        <label style="flex:0 0 auto;flex-direction:row;align-items:center;gap:8px;color:var(--fg);font-size:14px"><input type="checkbox" id="ambOn" style="width:auto"> Scene on</label>
+        <span class="mut small" id="ambState"></span>
+      </div>
+      <div id="ambRows"></div>
+      <div class="row"><button class="primary" id="ambApply">Save scene</button></div>
+      <div class="mut small">A background loop (rain, a fan) plays underneath, and each "random event" clip plays at a random moment between its two times. The scene follows the amp volume and the speaker limit, uses the EQ, and pauses by itself while you play a clip, a stream or the test tone. The level is relative to the amp volume (0 dB = as loud as that, lower = quieter).</div>
+    </div>
+
+    <div class="card" data-feature="net">
+      <h2>Network audio from Windows (VBAN and Scream)</h2>
+      <div class="row" style="align-items:center">
+        <label data-feature="vban" style="flex:0 0 auto;flex-direction:row;align-items:center;gap:8px;color:var(--fg);font-size:14px"><input type="checkbox" id="vbanOn" style="width:auto"> VBAN receiver (UDP 6980)</label>
+        <label data-feature="scream" style="flex:0 0 auto;flex-direction:row;align-items:center;gap:8px;color:var(--fg);font-size:14px"><input type="checkbox" id="screamOn" style="width:auto"> Scream receiver (UDP 4010)</label>
+        <label data-feature="scream" style="flex:0 0 auto;flex-direction:row;align-items:center;gap:8px;color:var(--fg);font-size:14px"><input type="checkbox" id="screamMc" style="width:auto"> also listen for multicast</label>
+      </div>
+      <div class="row">
+        <label>Only accept audio from this address (empty = anyone)<input type="text" id="naIp" placeholder="e.g. 192.168.2.10" maxlength="15"></label>
+        <label>VBAN stream name (empty = any)<input type="text" id="naName" maxlength="16"></label>
+        <button class="primary" id="naSave" style="flex:0 0 auto">Save</button>
+      </div>
+      <div class="mut small" id="naState"></div>
+      <div class="mut small" style="margin-top:6px"><b>Voicemeeter (VBAN):</b> open the VBAN window, add an outgoing stream, set this board's address and port 6980, pick a stream name, switch it on.
+        <b>Scream:</b> note that the official Scream driver cannot be installed normally on Windows 11 (its signature expired), see docs/windows-setup.md; with a working driver, choose "Speakers (Scream)" and send to this board's address (unicast) or leave multicast on.
+        <b>Easier on Windows 11:</b> a virtual audio cable plus <code>tools/stream.py</code> (docs/windows-setup.md).
+        Neither protocol has a password, so use the address filter. Sound goes through the EQ and the speaker-profile volume cap, and a clip or stream you start here wins over them.</div>
+    </div>
+
+    <div class="card" data-feature="radio">
+      <h2>Internet radio</h2>
+      <div class="row" style="align-items:center"><button class="danger" id="radStop">Stop</button><span class="mut small" id="radState"></span></div>
+      <div id="radRows"></div>
+      <div class="row"><label style="flex:3 1 280px">Play any MP3 stream address<input type="text" id="radUrl" placeholder="http://host/stream.mp3" maxlength="159"></label>
+        <button id="radPlayUrl" style="flex:0 0 auto">Play</button></div>
+      <div class="row"><button class="primary" id="radSave" style="flex:0 0 auto">Save station list</button></div>
+      <div class="mut small">MP3 streams over http:// or https:// work. AAC, Ogg and HLS stations do not (the board says "not MP3"). Station names up to 23 characters, addresses without spaces.</div>
+    </div>
+
+    <div class="card" data-feature="synth">
+      <h2>OSC synthesizer</h2>
+      <div class="row" style="align-items:center">
+        <label style="flex:0 0 auto;flex-direction:row;align-items:center;gap:8px;color:var(--fg);font-size:14px"><input type="checkbox" id="synOn" style="width:auto"> Synth on (OSC on UDP 9000)</label>
+        <span class="mut small" id="synState"></span>
+      </div>
+      <div class="row">
+        <label>Waveform<select id="synWave" style="padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit"><option value="0">Sine</option><option value="1">Triangle</option><option value="2">Saw</option><option value="3">Square</option></select></label>
+        <label>Attack (s)<input type="number" id="synA" step="0.01" min="0.001" max="10"></label>
+        <label>Decay (s)<input type="number" id="synD" step="0.01" min="0.001" max="10"></label>
+        <label>Sustain (0-1)<input type="number" id="synS" step="0.05" min="0" max="1"></label>
+        <label>Release (s)<input type="number" id="synR" step="0.01" min="0.001" max="10"></label>
+      </div>
+      <div class="row">
+        <label>Low-pass (Hz)<input type="number" id="synCut" step="100" min="50" max="20000"></label>
+        <label>Volume (0-1)<input type="number" id="synVol" step="0.05" min="0" max="1"></label>
+        <label>Longest held note (s)<input type="number" id="synMax" step="1" min="1" max="600"></label>
+        <label>Only accept OSC from (empty = anyone)<input type="text" id="synIp" maxlength="15"></label>
+      </div>
+      <div class="row"><button class="primary" id="synSave" style="flex:0 0 auto">Save synth settings</button></div>
+      <div id="synKeys" style="display:flex;gap:4px;flex-wrap:wrap;margin:8px 0"></div>
+      <div class="mut small">Test keys play C4 to C5 for half a second (the amp volume and the speaker limit apply, and notes below the speaker's lowest frequency are ignored).
+        OSC addresses: <code>/synth/note note vel</code>, <code>/synth/noteoff note</code>, <code>/synth/alloff</code>, <code>/synth/freq hz [vel]</code>, <code>/synth/wave 0-3|sine|tri|saw|square</code>,
+        <code>/synth/adsr a d s r</code>, <code>/synth/cutoff hz</code>, <code>/synth/volume 0-1</code>. Changes sent over OSC are live only; Save stores the page's values.</div>
+    </div>
+
+    <div class="card" data-feature="eq">
       <h2>Speaker EQ</h2>
       <div class="row" style="align-items:center">
         <label style="flex:0 0 auto;flex-direction:row;align-items:center;gap:8px;color:var(--fg);font-size:14px"><input type="checkbox" id="eqOn" style="width:auto"> EQ enabled</label>
@@ -183,7 +257,9 @@ a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:
 <script>
 const $=id=>document.getElementById(id);
 const say=(t,bad)=>{const m=$('msg');m.textContent=t;m.className=bad?'bad':'mut'};
-let loggedIn=false,prof=null;
+let loggedIn=false,prof=null,F={};
+function applyFeatures(f){F=f||{};F.net=!!(F.vban||F.scream);document.querySelectorAll('[data-feature]').forEach(el=>el.classList.toggle('hide',!F[el.dataset.feature]))}
+const featuresReady=fetch('/status').then(r=>r.json()).then(s=>{applyFeatures(s.features);return F}).catch(()=>F);
 
 async function call(url,opts){
   try{
@@ -203,7 +279,7 @@ function setLogin(v){
   $('clearFaults').classList.toggle('hide',!v);
   document.querySelectorAll('.auth').forEach(e=>e.classList.toggle('hide',!v));
   loadClips();
-  if(v){loadProfile();loadEq()}
+  if(v){loadProfile();featuresReady.then(()=>{if(F.eq)loadEq();if(F.ambient)loadAmb();if(F.net)loadNet(true);if(F.radio)loadRadio(true);if(F.synth)loadSynth(true)})}
 }
 async function checkSession(){
   try{const s=await (await fetch('/session',{credentials:'same-origin'})).json();setLogin(!!s.logged_in)}catch(e){}
@@ -264,7 +340,7 @@ function markPlaying(){
 }
 async function loadClips(){
   try{
-    const c=await (await fetch('/clips')).json();clipsShown=true;
+    const c=await (await fetch('/clips')).json();clipsShown=true;window.clipNames=c.files.map(f=>f.name);document.querySelectorAll('#ambRows .cl').forEach(sel=>ambOptions(sel,sel.value));
     $('spBar').style.width=c.total?((c.total-c.free)/c.total*100)+'%':'0%';
     $('clipSpace').textContent=c.total?(fmtSize(c.total-c.free)+' used of '+fmtSize(c.total)+' ('+fmtSize(c.free)+' free) · '+c.files.length+' clip'+(c.files.length===1?'':'s')):'Storage not available (the partition table has not been installed).';
     const box=$('clipList');box.textContent='';
@@ -392,6 +468,130 @@ $('eqApply').onclick=async()=>{
   if(t){buildEq(JSON.parse(t));say('EQ applied.')}
 };
 $('eqReset').onclick=async()=>{const t=await call('/eq/reset');if(t){buildEq(JSON.parse(t));say('Starter preset restored.')}};
+// ---- player transport and ambient scene -----------------------------------------------------
+async function transport(path){await call(path);poll()}
+$('tPrev').onclick=()=>transport('/player/prev');
+$('tPlay').onclick=()=>transport('/player/toggle');
+$('tNext').onclick=()=>transport('/player/next');
+$('tStop').onclick=()=>transport('/player/stop');
+$('tAuto').onchange=()=>call('/player/autonext?on='+($('tAuto').checked?1:0));
+function showTransport(p){
+  $('tPlay').textContent=p.state==='playing'?'⏸':'▶';
+  $('tPlay').title=p.state==='playing'?'Pause':'Play';
+  $('tNow').textContent=p.state==='idle'?(p.clip?('Last: '+p.clip):'Nothing selected'):((p.state==='paused'?'Paused: ':'Playing: ')+p.clip)+(p.index?(' ('+p.index+' of '+p.count+')'):'');
+}
+function ambOptions(sel,current){
+  sel.textContent='';
+  const names=(window.clipNames||[]).slice();
+  if(current&&!names.includes(current))names.push(current);
+  names.sort().forEach(n=>{const o=document.createElement('option');o.value=n;o.textContent=n;sel.appendChild(o)});
+  sel.value=current;
+}
+function buildAmb(c){
+  $('ambOn').checked=c.enabled;
+  const box=$('ambRows');box.textContent='';
+  c.rules.forEach((r,i)=>{
+    const row=document.createElement('div');row.className='row';row.id='amb'+i;row.style.margin='4px 0';
+    row.innerHTML='<label style="flex:0 0 46px">On<input type="checkbox" class="on" style="width:auto"></label>'+
+      '<label>Kind<select class="ty" style="padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit"><option value="1">Background loop</option><option value="0">Random event</option></select></label>'+
+      '<label style="flex:2 1 190px">Clip<select class="cl" style="padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit"></select></label>'+
+      '<label>Every (min) from<input type="number" class="mn" min="0.1" max="1440" step="0.5"></label>'+
+      '<label>to (min)<input type="number" class="mx" min="0.1" max="1440" step="0.5"></label>'+
+      '<label>Level (dB)<input type="number" class="gn" min="-30" max="0" step="1"></label>';
+    row.querySelector('.on').checked=!!r.on;
+    row.querySelector('.ty').value=String(r.type);
+    ambOptions(row.querySelector('.cl'),r.clip);
+    row.querySelector('.mn').value=(r.min/60).toFixed(1);
+    row.querySelector('.mx').value=(r.max/60).toFixed(1);
+    row.querySelector('.gn').value=r.gain;
+    row.querySelector('.ty').addEventListener('change',()=>{const bg=row.querySelector('.ty').value==='1';row.querySelector('.mn').disabled=bg;row.querySelector('.mx').disabled=bg});
+    row.querySelector('.ty').dispatchEvent(new Event('change'));
+    box.appendChild(row);
+  });
+}
+async function loadAmb(){try{buildAmb(await (await fetch('/ambient')).json())}catch(e){say('Could not load the ambient scene: '+e,true)}}
+$('ambApply').onclick=async()=>{
+  const lines=['enabled='+($('ambOn').checked?1:0)];
+  document.querySelectorAll('#ambRows .row').forEach((row,i)=>{
+    const type=+row.querySelector('.ty').value;
+    const mn=Math.max(5,Math.round(parseFloat(row.querySelector('.mn').value||'1')*60));
+    const mx=Math.max(mn,Math.round(parseFloat(row.querySelector('.mx').value||'1')*60));
+    lines.push('r'+i+'='+(row.querySelector('.on').checked?1:0)+','+type+','+row.querySelector('.cl').value+','+(type?0:mn)+','+(type?0:mx)+','+row.querySelector('.gn').value);
+  });
+  const t=await call('/ambient',{body:lines.join('\n')});
+  if(t){buildAmb(JSON.parse(t));say('Ambient scene saved.')}
+};
+$('ambOn').addEventListener('change',async()=>{await call('/ambient/enable?on='+($('ambOn').checked?1:0));poll()});
+// ---- network audio, radio, synthesizer ---------------------------------------------------------
+function netText(n,label){
+  if(!n.active&&!n.packets)return label+': nothing received yet.';
+  return label+': '+(n.active?('receiving from '+n.source+' at '+n.rate+' Hz, '+n.channels+' ch'+(n.name?', stream "'+n.name+'"':'')):'idle')+' · '+n.packets+' packets'+(n.dropped?', '+n.dropped+' dropped':'')+'.';
+}
+async function loadNet(fill){
+  try{
+    const c=await (await fetch('/netaudio')).json();
+    if(fill){$('vbanOn').checked=c.vban_on;$('screamOn').checked=c.scream_on;$('screamMc').checked=c.scream_multicast;$('naIp').value=c.allow_ip;$('naName').value=c.vban_name}
+    $('naState').textContent=(c.vban_supported?netText(c.vban,'VBAN'):'')+'  '+(c.scream_supported?netText(c.scream,'Scream'):'');
+  }catch(e){}
+}
+$('naSave').onclick=async()=>{
+  const body=['vban='+($('vbanOn').checked?1:0),'scream='+($('screamOn').checked?1:0),'scream_multicast='+($('screamMc').checked?1:0),
+    'allow_ip='+$('naIp').value.trim(),'vban_name='+$('naName').value.trim()].join('\n');
+  if(await call('/netaudio',{body})){say('Network audio settings saved.');loadNet(true)}
+};
+
+async function loadRadio(fill){
+  try{
+    const c=await (await fetch('/radio')).json();
+    $('radState').textContent=c.playing?('playing "'+c.name+'": '+c.status):('stopped'+(c.status&&c.status!=='stopped'?' ('+c.status+')':''));
+    if(!fill)return;
+    const box=$('radRows');box.textContent='';
+    c.presets.forEach((p,i)=>{
+      const row=document.createElement('div');row.className='row';row.id='rad'+i;row.style.margin='4px 0';
+      row.innerHTML='<label style="flex:1 1 150px">Name<input type="text" class="rn" maxlength="23"></label>'+
+        '<label style="flex:3 1 260px">Address<input type="text" class="ru" maxlength="159"></label>'+
+        '<button class="pbtn rp" title="Play">▶</button>';
+      row.querySelector('.rn').value=p.name;row.querySelector('.ru').value=p.url;
+      row.querySelector('.rp').onclick=async()=>{await call('/radio/play?preset='+i);setTimeout(()=>{loadRadio(false);poll()},800)};
+      box.appendChild(row);
+    });
+  }catch(e){}
+}
+$('radStop').onclick=async()=>{await call('/radio/stop');loadRadio(false);poll()};
+$('radPlayUrl').onclick=async()=>{const u=$('radUrl').value.trim();if(u){await call('/radio/play?url='+encodeURIComponent(u));setTimeout(()=>{loadRadio(false);poll()},800)}};
+$('radSave').onclick=async()=>{
+  const lines=[];
+  document.querySelectorAll('#radRows .row').forEach((row,i)=>{
+    const n=row.querySelector('.rn').value.trim(),u=row.querySelector('.ru').value.trim();
+    lines.push('p'+i+'='+(u?(n||'Station')+'|'+u:''));
+  });
+  if(await call('/radio',{body:lines.join('\n')})){say('Station list saved.');loadRadio(true)}
+};
+
+async function loadSynth(fill){
+  try{
+    const c=await (await fetch('/synth')).json();
+    $('synState').textContent=c.enabled?('listening on UDP '+c.port+' · '+c.messages+' messages, '+c.voices_active+' voices sounding'):'off';
+    if(!fill)return;
+    $('synOn').checked=c.enabled;$('synWave').value=c.wave;$('synA').value=c.a;$('synD').value=c.d;$('synS').value=c.s;$('synR').value=c.r;
+    $('synCut').value=c.cutoff;$('synVol').value=c.volume;$('synMax').value=c.max_note_s;$('synIp').value=c.allow_ip;
+  }catch(e){}
+}
+$('synSave').onclick=async()=>{
+  const body=['enabled='+($('synOn').checked?1:0),'wave='+$('synWave').value,'a='+$('synA').value,'d='+$('synD').value,'s='+$('synS').value,
+    'r='+$('synR').value,'cutoff='+$('synCut').value,'volume='+$('synVol').value,'max_note_s='+$('synMax').value,'allow_ip='+$('synIp').value.trim()].join('\n');
+  if(await call('/synth',{body})){say('Synth settings saved.');loadSynth(true)}
+};
+(function(){
+  const names=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B','C'];
+  names.forEach((n,i)=>{
+    const b=document.createElement('button');b.textContent=n+(i===12?'5':'4');b.className=n.includes('#')?'sm':'sm';
+    if(n.includes('#'))b.style.background='var(--line)';
+    b.onclick=()=>call('/synth/note?note='+(60+i)+'&vel=100&dur=500');
+    $('synKeys').appendChild(b);
+  });
+})();
+setInterval(()=>{if(loggedIn){if(F.net)loadNet(false);if(F.radio)loadRadio(false);if(F.synth)loadSynth(false)}},3000);
 function fmtUp(s){const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);
   return d?d+'d '+h+'h':(h?h+'h '+m+'m':m+'m '+(s%60)+'s')}
 async function poll(){
@@ -410,8 +610,11 @@ async function poll(){
     $('tstate').textContent=s.tone.on?('Playing '+s.tone.freq_hz+' Hz'):'Stopped';
     if(!s.tone.on)playing=false;   // the firmware stopped it (timeout, fault or another client)
     if(!volSynced){appliedVol=Math.min(s.vol_db,+$('mvol').max);$('mvol').value=appliedVol;$('mvolV').textContent=appliedVol;volSynced=true}
+    applyFeatures(s.features);
     const m=s.media;
     $('mstate').textContent=m.src==='none'?'Idle':((m.src==='stream'?'Streaming':'Playing clip '+m.label)+' · buffer '+m.buffer_ms+' ms'+(m.underruns?' · '+m.underruns+' dropouts':''));
+    showTransport(s.player);
+    $('ambState').textContent=s.ambient.on?(s.ambient.running?('running'+(s.ambient.bg?' · background: '+s.ambient.bg:'')+(s.ambient.event?' · now: '+s.ambient.event:'')):'on, paused while something else plays'):'off';
     const np=m.src==='clip'?m.label:'';if(np!==nowClip){nowClip=np;markPlaying()}
     if(m.src==='none'&&clipsShown&&s.storage.free!==lastFree){loadClips()}
     lastFree=s.storage.free;

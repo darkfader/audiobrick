@@ -7,11 +7,17 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "led_strip.h"
-#include "limits.h"
+#include "speaker_limits.h"
 #include "media.h"
+#include "ambient.h"
 #include "net.h"
+#include "netaudio.h"
+#include "player.h"
+#include "radio.h"
+#include "safemode.h"
 #include "storage.h"
 #include "stream.h"
+#include "synth.h"
 #include "nvs_flash.h"
 #include "ota_http.h"
 #include "tone.h"
@@ -33,6 +39,7 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(err);
 
+    safemode_boot();
     limits_init();
     eq_init();
 
@@ -47,7 +54,14 @@ void app_main(void)
         ESP_LOGE(TAG, "audio init failed");
     }
     storage_init();  // clips; fails harmlessly on boards that still have the old partition table
+    player_init();
+    radio_init();
+    ambient_init();
 
+#if CONFIG_AB_FEATURE_VBAN || CONFIG_AB_FEATURE_SCREAM
+    netaudio_init();
+#endif
+    synth_init();
     if (!net_start() || !ota_http_start() || !stream_start()) {
         ESP_LOGE(TAG, "network init failed");
     }
@@ -69,6 +83,7 @@ void app_main(void)
             marked_valid = true;
             ESP_LOGI(TAG, "image marked valid; http://%s/status", net_ip_str());
         }
+        safemode_healthy();
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }

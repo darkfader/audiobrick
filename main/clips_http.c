@@ -17,8 +17,10 @@
 #include "dac.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
+#include "speaker_limits.h"
 #include "media.h"
 #include "ota_http.h"
+#include "player.h"
 #include "storage.h"
 
 static const char *TAG = "clips";
@@ -126,7 +128,7 @@ static esp_err_t play_handler(httpd_req_t *req)
     char query[96], val[8];
     bool loop = httpd_req_get_url_query_str(req, query, sizeof query) == ESP_OK &&
                 httpd_query_key_value(query, "loop", val, sizeof val) == ESP_OK && atoi(val) != 0;
-    if (!clip_play(name, loop)) {
+    if (!player_play_clip(name, loop)) {
         httpd_resp_set_status(req, "409 Conflict");
         return httpd_resp_sendstr(req, "cannot play: missing file, or something else is playing\n");
     }
@@ -211,11 +213,18 @@ static esp_err_t volume_handler(httpd_req_t *req)
 {
     if (!web_authorized(req)) return web_deny(req);
     char query[48], val[16];
-    if (httpd_req_get_url_query_str(req, query, sizeof query) != ESP_OK ||
-        httpd_query_key_value(query, "db", val, sizeof val) != ESP_OK) {
-        return bad_request(req, "missing db\n");
+    if (httpd_req_get_url_query_str(req, query, sizeof query) != ESP_OK) return bad_request(req, "missing db or level\n");
+    if (httpd_query_key_value(query, "level", val, sizeof val) == ESP_OK) {
+        // level 0..1 maps from -70 dB up to the speaker profile's cap (what a media player slider expects)
+        float lv = strtof(val, NULL);
+        if (!(lv >= 0.0f)) lv = 0.0f;
+        if (lv > 1.0f) lv = 1.0f;
+        dac_set_volume_db((int)(-70.0f + lv * (limits_max_volume_db() + 70.0f) + 0.5f));
+    } else if (httpd_query_key_value(query, "db", val, sizeof val) == ESP_OK) {
+        dac_set_volume_db(atoi(val));  // clamped to the speaker profile's cap
+    } else {
+        return bad_request(req, "missing db or level\n");
     }
-    dac_set_volume_db(atoi(val));  // clamped to the speaker profile's cap
     char out[40];
     snprintf(out, sizeof out, "{\"vol_db\":%d}\n", dac_get_volume_db());
     httpd_resp_set_type(req, "application/json");
@@ -237,5 +246,8 @@ void ota_http_register_more(httpd_handle_t server)
     for (size_t i = 0; i < sizeof uris / sizeof uris[0]; i++) {
         httpd_register_uri_handler(server, &uris[i]);
     }
+#if CONFIG_AB_FEATURE_EQ
     eq_http_register(server);
+#endif
+    ambient_http_register(server);  // always: it also registers the player controls
 }

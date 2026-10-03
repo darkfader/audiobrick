@@ -1,0 +1,166 @@
+# Home Assistant package for the Esparagus Audio Brick (firmware 0.9.8 or newer).
+#
+# What you get:
+#   * a media player "Audio Brick" with play, pause, stop, next, previous and a volume slider
+#     (next/previous walk through the clips stored on the board, alphabetically)
+#   * sensors: now playing, supply voltage, amp fault/warning, firmware version, ambient scene on/off
+#   * a switch for the ambient scene (looping background plus random events)
+#   * services: rest_command.audiobrick_radio_play (preset 0-7), audiobrick_play_clip, audiobrick_synth_note
+#
+# Setup:
+#   1. Copy this file to  <config>/packages/audiobrick.yaml  and make sure configuration.yaml has
+#        homeassistant:
+#          packages: !include_dir_named packages
+#   2. Add the web password of the board to <config>/secrets.yaml:
+#        audiobrick_password: "<the password you log in with>"
+#   3. Replace 192.168.2.40 below with the board's address (give it a fixed address / DHCP reservation
+#      in your router, the board has no mDNS name yet).
+#   4. Restart Home Assistant.
+#
+# The board speaks plain HTTP on your LAN; the password travels in the X-Token header. Keep it off the internet.
+# Not tested against a real Home Assistant yet: if something does not appear, check Settings -> System -> Logs.
+
+rest:
+  - resource: http://192.168.2.40/status
+    scan_interval: 5
+    timeout: 5
+    sensor:
+      - name: "Audio Brick status"
+        unique_id: audiobrick_status
+        value_template: "{{ value_json.player.state }}"          # idle / playing / paused
+        json_attributes:
+          - volume_level                                         # 0..1, used by the media player slider
+          - vol_db
+          - pvdd_v
+          - ip
+          - version
+          - uptime_s
+      - name: "Audio Brick now playing"
+        unique_id: audiobrick_now_playing
+        value_template: "{{ value_json.player.clip if value_json.player.clip else 'Nothing' }}"
+      - name: "Audio Brick supply voltage"
+        unique_id: audiobrick_supply_voltage
+        value_template: "{{ value_json.pvdd_v }}"
+        device_class: voltage
+        unit_of_measurement: "V"
+        state_class: measurement
+      - name: "Audio Brick firmware"
+        unique_id: audiobrick_firmware
+        value_template: "{{ value_json.version }}"
+      - name: "Audio Brick ambient scene state"
+        unique_id: audiobrick_ambient_state
+        value_template: "{{ 'on' if value_json.ambient.on else 'off' }}"
+    binary_sensor:
+      - name: "Audio Brick amp fault"
+        unique_id: audiobrick_amp_fault
+        value_template: "{{ value_json.fault }}"
+        device_class: problem
+      - name: "Audio Brick amp warning"
+        unique_id: audiobrick_amp_warning
+        value_template: "{{ value_json.warning }}"
+        device_class: problem
+
+rest_command:
+  audiobrick_play:
+    url: "http://192.168.2.40/player/play"
+    method: post
+    headers:
+      X-Token: !secret audiobrick_password
+  audiobrick_pause:
+    url: "http://192.168.2.40/player/pause"
+    method: post
+    headers:
+      X-Token: !secret audiobrick_password
+  audiobrick_toggle:
+    url: "http://192.168.2.40/player/toggle"
+    method: post
+    headers:
+      X-Token: !secret audiobrick_password
+  audiobrick_stop:
+    url: "http://192.168.2.40/player/stop"
+    method: post
+    headers:
+      X-Token: !secret audiobrick_password
+  audiobrick_next:
+    url: "http://192.168.2.40/player/next"
+    method: post
+    headers:
+      X-Token: !secret audiobrick_password
+  audiobrick_previous:
+    url: "http://192.168.2.40/player/prev"
+    method: post
+    headers:
+      X-Token: !secret audiobrick_password
+  audiobrick_volume:
+    # level is 0..1; the board maps it from -70 dB up to the cap of the speaker profile
+    url: "http://192.168.2.40/volume?level={{ level }}"
+    method: post
+    headers:
+      X-Token: !secret audiobrick_password
+  audiobrick_ambient_on:
+    url: "http://192.168.2.40/ambient/enable?on=1"
+    method: post
+    headers:
+      X-Token: !secret audiobrick_password
+  audiobrick_ambient_off:
+    url: "http://192.168.2.40/ambient/enable?on=0"
+    method: post
+    headers:
+      X-Token: !secret audiobrick_password
+  audiobrick_radio_play:
+    # call with  preset: 0   (0-7, the station slots on the board's Internet radio card)
+    url: "http://192.168.2.40/radio/play?preset={{ preset }}"
+    method: post
+    headers:
+      X-Token: !secret audiobrick_password
+  audiobrick_synth_note:
+    # call with  note: 60  (MIDI note) and optionally  vel: 100, dur: 500 (milliseconds)
+    url: "http://192.168.2.40/synth/note?note={{ note }}&vel={{ vel | default(100) }}&dur={{ dur | default(500) }}"
+    method: post
+    headers:
+      X-Token: !secret audiobrick_password
+  audiobrick_play_clip:
+    # call with  clip: cat_meow_1.mp3   (optionally loop: 1)
+    url: "http://192.168.2.40/clips/play?name={{ clip }}&loop={{ loop | default(0) }}"
+    method: post
+    headers:
+      X-Token: !secret audiobrick_password
+
+media_player:
+  - platform: universal
+    name: "Audio Brick"
+    unique_id: audiobrick_media_player
+    device_class: speaker
+    state_template: >
+      {% set s = states('sensor.audio_brick_status') %}
+      {{ s if s in ['playing', 'paused', 'idle'] else 'unavailable' }}
+    commands:
+      volume_set:
+        action: rest_command.audiobrick_volume
+        data:
+          level: "{{ volume_level }}"
+      media_play:
+        action: rest_command.audiobrick_play
+      media_pause:
+        action: rest_command.audiobrick_pause
+      media_play_pause:
+        action: rest_command.audiobrick_toggle
+      media_stop:
+        action: rest_command.audiobrick_stop
+      media_next_track:
+        action: rest_command.audiobrick_next
+      media_previous_track:
+        action: rest_command.audiobrick_previous
+    attributes:
+      volume_level: sensor.audio_brick_status|volume_level
+      media_title: sensor.audio_brick_now_playing
+
+template:
+  - switch:
+      - name: "Audio Brick ambient scene"
+        unique_id: audiobrick_ambient_scene
+        state: "{{ is_state('sensor.audio_brick_ambient_scene_state', 'on') }}"
+        turn_on:
+          action: rest_command.audiobrick_ambient_on
+        turn_off:
+          action: rest_command.audiobrick_ambient_off

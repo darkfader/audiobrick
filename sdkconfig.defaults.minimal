@@ -1,0 +1,8 @@
+# Core only: mixer, test tone, clips and player, web page with login, OTA, safe mode. No optional feature.
+# Build:  idf.py -B build_min -D SDKCONFIG=build_min/sdkconfig -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.minimal" build
+CONFIG_AB_FEATURE_EQ=n
+CONFIG_AB_FEATURE_AMBIENT=n
+CONFIG_AB_FEATURE_VBAN=n
+CONFIG_AB_FEATURE_SCREAM=n
+CONFIG_AB_FEATURE_RADIO=n
+CONFIG_AB_FEATURE_SYNTH=n

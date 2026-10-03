@@ -17,14 +17,24 @@
 
 static const char *TAG = "clip";
 
-#define IN_BUF   16384
+#define IN_BUF     8192
 #define OUT_FRAMES 2048
 
 typedef struct {
     char path[64];
     bool is_wav;
     bool loop;
+    int slot;
 } clip_job_t;
+
+// Per-playback working state (one per clip task, so several clips can play at once).
+typedef struct {
+    int slot;
+    resampler_t rs;
+    uint32_t cur_rate;
+    int16_t *stereo;  // 256 frames of interleaved stereo
+    int16_t *out;     // OUT_FRAMES of resampled stereo
+} ctx_t;
 
 bool clip_name_valid(const char *name)
 {
@@ -41,28 +51,27 @@ bool clip_name_valid(const char *name)
     return strcasecmp(ext, ".mp3") == 0 || strcasecmp(ext, ".wav") == 0;
 }
 
-// Sends decoded interleaved PCM (1 or 2 channels at rate Hz) into the player.
-static bool push_pcm(resampler_t *rs, uint32_t *cur_rate, const int16_t *pcm, size_t frames, int channels,
-                     uint32_t rate, int16_t *stereo, int16_t *out)
+// Sends decoded interleaved PCM (1 or 2 channels at rate Hz) into the player slot. False once aborted.
+static bool push_pcm(ctx_t *c, const int16_t *pcm, size_t frames, int channels, uint32_t rate)
 {
-    if (rate != *cur_rate) {
-        resampler_init(rs, rate);
-        *cur_rate = rate;
+    if (rate != c->cur_rate) {
+        resampler_init(&c->rs, rate);
+        c->cur_rate = rate;
     }
     while (frames > 0) {
         size_t n = frames < 256 ? frames : 256;  // 256 frames at 8 kHz resample to 1536 (< OUT_FRAMES)
         for (size_t i = 0; i < n; i++) {
-            stereo[2 * i] = pcm[channels * i];
-            stereo[2 * i + 1] = channels > 1 ? pcm[channels * i + 1] : pcm[channels * i];
+            c->stereo[2 * i] = pcm[channels * i];
+            c->stereo[2 * i + 1] = channels > 1 ? pcm[channels * i + 1] : pcm[channels * i];
         }
         size_t produced;
         if (rate == 48000) {
             produced = n;
-            memcpy(out, stereo, n * 4);
+            memcpy(c->out, c->stereo, n * 4);
         } else {
-            produced = resampler_process(rs, stereo, n, out, OUT_FRAMES);
+            produced = resampler_process(&c->rs, c->stereo, n, c->out, OUT_FRAMES);
         }
-        if (produced && media_write(out, produced) < produced) return false;  // aborted
+        if (produced && media_write_slot(c->slot, c->out, produced) < produced) return false;  // aborted
         pcm += channels * n;
         frames -= n;
     }
@@ -104,7 +113,7 @@ static bool parse_xing(const uint8_t *fr, int len, uint32_t *frames, int *delay,
     return false;
 }
 
-static void play_mp3(FILE *f, resampler_t *rs, uint32_t *cur_rate, int16_t *stereo, int16_t *out)
+static void play_mp3(FILE *f, ctx_t *c)
 {
     mp3dec_t *dec = calloc(1, sizeof *dec);
     uint8_t *in = malloc(IN_BUF);
@@ -131,7 +140,7 @@ static void play_mp3(FILE *f, resampler_t *rs, uint32_t *cur_rate, int16_t *ster
     uint32_t xing_frames = 0;
     int xing_padding = 0;
     int64_t pos = 0;              // decoded samples per channel so far
-    while (!media_aborted()) {
+    while (!media_aborted_slot(c->slot)) {
         if (!eof && in_len < IN_BUF) {
             size_t got = fread(in + in_len, 1, IN_BUF - in_len, f);
             if (got == 0) eof = true;
@@ -149,8 +158,8 @@ static void play_mp3(FILE *f, resampler_t *rs, uint32_t *cur_rate, int16_t *ster
             first = false;
             uint32_t frames;
             int delay, padding;
-            if (parse_xing(in + (info.frame_offset > 0 ? info.frame_offset : 0), (int)(in_len - (info.frame_offset > 0 ? info.frame_offset : 0)),
-                           &frames, &delay, &padding)) {
+            int off = info.frame_offset > 0 ? info.frame_offset : 0;
+            if (parse_xing(in + off, (int)in_len - off, &frames, &delay, &padding)) {
                 skip = delay + 529;  // encoder delay plus the 528+1 samples of decoder delay
                 xing_frames = frames;
                 xing_padding = padding;
@@ -172,12 +181,10 @@ static void play_mp3(FILE *f, resampler_t *rs, uint32_t *cur_rate, int16_t *ster
             int64_t b = samples;
             if (valid != INT64_MAX && skip + valid - pos < b) b = skip + valid - pos;
             pos += samples;
-            if (b > a && !push_pcm(rs, cur_rate, pcm + a * info.channels, (size_t)(b - a), info.channels, info.hz, stereo, out)) break;
+            if (b > a && !push_pcm(c, pcm + a * info.channels, (size_t)(b - a), info.channels, info.hz)) break;
             if (valid != INT64_MAX && pos >= skip + valid) break;  // the rest is encoder padding
         }
     }
-    ESP_LOGI(TAG, "mp3 pass: decoded %lld samples/channel, skipped %lld, played up to %lld (xing frames %u, padding %d)",
-             (long long)pos, (long long)skip, (long long)(valid == INT64_MAX ? pos : skip + valid), (unsigned)xing_frames, xing_padding);
 done:
     free(dec);
     free(in);
@@ -187,7 +194,7 @@ done:
 static uint32_t rd32(const uint8_t *p) { return p[0] | (p[1] << 8) | (p[2] << 16) | ((uint32_t)p[3] << 24); }
 static uint16_t rd16(const uint8_t *p) { return p[0] | (p[1] << 8); }
 
-static void play_wav(FILE *f, resampler_t *rs, uint32_t *cur_rate, int16_t *stereo, int16_t *out)
+static void play_wav(FILE *f, ctx_t *c)
 {
     uint8_t hdr[12];
     if (fread(hdr, 1, 12, f) != 12 || memcmp(hdr, "RIFF", 4) || memcmp(hdr + 8, "WAVE", 4)) {
@@ -216,13 +223,13 @@ static void play_wav(FILE *f, resampler_t *rs, uint32_t *cur_rate, int16_t *ster
             int16_t *pcm = malloc(1024 * channels * sizeof(int16_t));
             if (!pcm) return;
             uint32_t left = size;
-            while (left > 0 && !media_aborted()) {
+            while (left > 0 && !media_aborted_slot(c->slot)) {
                 size_t want = left < 1024 * channels * 2 ? left : 1024 * channels * 2;
                 size_t got = fread(pcm, 1, want, f);
                 if (got == 0) break;
                 left -= got;
                 size_t frames = got / (2 * channels);
-                if (!push_pcm(rs, cur_rate, pcm, frames, channels, rate, stereo, out)) break;
+                if (!push_pcm(c, pcm, frames, channels, rate)) break;
             }
             free(pcm);
             return;
@@ -236,30 +243,30 @@ static void clip_task(void *arg)
 {
     clip_job_t *job = arg;
     FILE *f = fopen(job->path, "rb");
-    int16_t *stereo = malloc(512 * 2 * sizeof(int16_t));
-    int16_t *out = malloc(OUT_FRAMES * 2 * sizeof(int16_t));
-    resampler_t rs;
-    uint32_t cur_rate = 0;
-    if (f && stereo && out) {
+    ctx_t c = { .slot = job->slot };
+    c.stereo = malloc(256 * 2 * sizeof(int16_t));
+    c.out = malloc(OUT_FRAMES * 2 * sizeof(int16_t));
+    if (f && c.stereo && c.out) {
         do {
             int64_t started = esp_timer_get_time();
-            if (job->is_wav) play_wav(f, &rs, &cur_rate, stereo, out);
-            else play_mp3(f, &rs, &cur_rate, stereo, out);
+            if (job->is_wav) play_wav(f, &c);
+            else play_mp3(f, &c);
             if (esp_timer_get_time() - started < 200000) break;  // empty or broken file: do not spin
             fseek(f, 0, SEEK_SET);
-        } while (job->loop && !media_aborted());
+        } while (job->loop && !media_aborted_slot(job->slot));
     } else {
         ESP_LOGE(TAG, "cannot open %s", job->path);
     }
     if (f) fclose(f);
-    free(stereo);
-    free(out);
+    free(c.stereo);
+    free(c.out);
+    int slot = job->slot;
     free(job);
-    media_finish();
+    media_finish_slot(slot);
     vTaskDelete(NULL);
 }
 
-bool clip_play(const char *name, bool loop)
+bool clip_play_slot(const char *name, bool loop, int slot)
 {
     if (!clip_name_valid(name)) return false;
     clip_job_t *job = calloc(1, sizeof *job);
@@ -267,6 +274,7 @@ bool clip_play(const char *name, bool loop)
     snprintf(job->path, sizeof job->path, STORAGE_PATH "/%s", name);
     job->is_wav = strcasecmp(name + strlen(name) - 4, ".wav") == 0;
     job->loop = loop;
+    job->slot = slot;
 
     FILE *f = fopen(job->path, "rb");  // fail early with a proper error if the file is missing
     if (!f) {
@@ -275,16 +283,21 @@ bool clip_play(const char *name, bool loop)
     }
     fclose(f);
 
-    if (!media_begin(MEDIA_CLIP, name)) {
+    if (!media_begin_slot(slot, MEDIA_CLIP, name)) {
         free(job);
         return false;
     }
     // minimp3 keeps about 18 KB of scratch data on the stack while decoding a frame.
-    if (xTaskCreate(clip_task, "clip", 32768, job, 4, NULL) != pdPASS) {
-        media_abort();
-        media_finish();
+    if (xTaskCreate(clip_task, "clip", 28672, job, 4, NULL) != pdPASS) {
+        media_abort_slot(slot);
+        media_finish_slot(slot);
         free(job);
         return false;
     }
     return true;
+}
+
+bool clip_play(const char *name, bool loop)
+{
+    return clip_play_slot(name, loop, SLOT_MAIN);
 }

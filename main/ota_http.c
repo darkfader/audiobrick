@@ -14,14 +14,28 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "limits.h"
+#include "speaker_limits.h"
 #include "media.h"
+#include "features.h"
+#include "ambient.h"
+#include "esp_heap_caps.h"
 #include "net.h"
+#include "player.h"
+#include "safemode.h"
 #include "storage.h"
 #include "nvs.h"
 #include "tone.h"
 
 static const char *TAG = "http";
+
+#if CONFIG_AB_FEATURE_AMBIENT
+#define AMBIENT_ON() (ambient_get().enabled)
+#define AMBIENT_RUNNING() ambient_running()
+#else
+#define AMBIENT_ON() false
+#define AMBIENT_RUNNING() false
+#endif
+#define FEAT(x) ((x) ? "true" : "false")
 
 // ---- credentials and sessions ------------------------------------------------------------
 
@@ -270,25 +284,37 @@ static esp_err_t status_handler(httpd_req_t *req)
     media_kind_t mk = media_kind();
     size_t st_total = 0, st_free = 0;
     storage_info(&st_total, &st_free);
-    char json[1000];
+    char json[1700];
     snprintf(json, sizeof json,
              "{\"version\":\"%s\",\"built\":\"%s %s\",\"partition\":\"%s\",\"uptime_s\":%lld,\"ip\":\"%s\","
              "\"pvdd_v\":%.2f,\"fault\":%s,\"warning\":%s,"
              "\"regs\":{\"chan_fault\":%u,\"fault1\":%u,\"fault2\":%u,\"warning\":%u},"
-             "\"vol_db\":%d,\"clip\":%s,"
+             "\"safe_mode\":%s,\"vol_db\":%d,\"volume_level\":%.3f,\"clip\":%s,"
              "\"tone\":{\"on\":%s,\"freq_hz\":%.1f,\"db\":%.1f},"
              "\"est\":{\"vrms\":%.3f,\"watts\":%.3f,\"spl\":%.1f},"
              "\"media\":{\"src\":\"%s\",\"label\":\"%s\",\"buffer_ms\":%u,\"underruns\":%u},"
-             "\"storage\":{\"total\":%u,\"free\":%u}}\n",
+             "\"storage\":{\"total\":%u,\"free\":%u},"
+             "\"player\":{\"state\":\"%s\",\"clip\":\"%s\",\"index\":%d,\"count\":%d},"
+             "\"ambient\":{\"on\":%s,\"running\":%s,\"bg\":\"%s\",\"event\":\"%s\"},"
+             "\"heap\":{\"free\":%u,\"largest\":%u,\"min\":%u},"
+             "\"features\":{\"eq\":%s,\"ambient\":%s,\"vban\":%s,\"scream\":%s,\"radio\":%s,\"synth\":%s}}\n",
              app->version, app->date, app->time, part ? part->label : "?",
              (long long)(esp_timer_get_time() / 1000000), net_ip_str(), pvdd,
              dac_fault_active() ? "true" : "false", dac_warning_active() ? "true" : "false",
-             reg[0], reg[1], reg[2], reg[3], vol, clip ? "true" : "false",
+             reg[0], reg[1], reg[2], reg[3], safemode_active() ? "true" : "false", vol, (vol + 70.0f) / (limits_max_volume_db() + 70.0f), clip ? "true" : "false",
              t.enabled ? "true" : "false", t.freq_hz, t.level_dbfs,
              vrms, watts, spl,
              mk == MEDIA_STREAM ? "stream" : (mk == MEDIA_CLIP ? "clip" : "none"), media_label(),
              (unsigned)media_buffer_ms(), (unsigned)media_underruns(),
-             (unsigned)st_total, (unsigned)st_free);
+             (unsigned)st_total, (unsigned)st_free,
+             player_state() == PLAYER_PLAYING ? "playing" : (player_state() == PLAYER_PAUSED ? "paused" : "idle"),
+             player_current(), player_index(), player_count(),
+             AMBIENT_ON() ? "true" : "false", AMBIENT_RUNNING() ? "true" : "false",
+             media_active_slot(SLOT_BG) ? media_label_slot(SLOT_BG) : "", media_active_slot(SLOT_EVENT) ? media_label_slot(SLOT_EVENT) : "",
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+             FEAT(AB_HAS_EQ), FEAT(AB_HAS_AMBIENT), FEAT(AB_HAS_VBAN), FEAT(AB_HAS_SCREAM),
+             FEAT(AB_HAS_RADIO), FEAT(AB_HAS_SYNTH));
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, json);
 }
@@ -453,7 +479,7 @@ bool ota_http_start(void)
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.stack_size = 8192;
     cfg.recv_wait_timeout = 20;
-    cfg.max_uri_handlers = 24;
+    cfg.max_uri_handlers = 48;
     cfg.max_open_sockets = 8;  // the lwIP pool is 16: web server 8 + 2 internal, the stream port and its client
     cfg.lru_purge_enable = true;
     httpd_handle_t server;

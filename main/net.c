@@ -13,6 +13,7 @@
 static const char *TAG = "net";
 
 static char s_ip[16];
+static esp_eth_handle_t s_eth;
 static volatile bool s_has_ip;
 
 static void on_eth_event(void *arg, esp_event_base_t base, int32_t id, void *data)
@@ -95,6 +96,7 @@ bool net_start(void)
 
     ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, on_eth_event, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, on_got_ip, NULL));
+    s_eth = eth;
     ESP_ERROR_CHECK(esp_eth_start(eth));
     ESP_LOGI(TAG, "W5500 started, MAC %02x:%02x:%02x:%02x:%02x:%02x",
              addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
@@ -103,3 +105,16 @@ bool net_start(void)
 
 bool net_has_ip(void)     { return s_has_ip; }
 const char *net_ip_str(void) { return s_ip; }
+
+void *net_eth_handle(void) { return s_eth; }
+
+// Multicast frames may be filtered out by the Ethernet chip. Ask for "all multicast" if the driver can, otherwise
+// fall back to promiscuous mode. Both ioctls take a pointer to a bool, not the value.
+void net_set_promiscuous(bool on)
+{
+    if (!s_eth) return;
+    bool v = on;
+    if (esp_eth_ioctl(s_eth, ETH_CMD_S_ALL_MULTICAST, &v) != ESP_OK) {
+        esp_eth_ioctl(s_eth, ETH_CMD_S_PROMISCUOUS, &v);
+    }
+}

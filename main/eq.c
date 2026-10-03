@@ -1,5 +1,8 @@
 #include "eq.h"
 
+#if CONFIG_AB_FEATURE_EQ
+
+
 #include <math.h>
 #include <string.h>
 #include "board.h"
@@ -185,3 +188,5 @@ void eq_process(int16_t *stereo, size_t frames)
         }
     }
 }
+
+#endif  // CONFIG_AB_FEATURE_EQ

@@ -12,8 +12,9 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "limits.h"
+#include "speaker_limits.h"
 #include "media.h"
+#include "synth.h"
 
 static const char *TAG = "tone";
 
@@ -57,14 +58,32 @@ void tone_hold(int ttl_s)
     s_deadline_us = esp_timer_get_time() + (int64_t)ttl_s * 1000000;
 }
 
+static volatile bool s_main_paused;
+static volatile float s_slot_gain[MEDIA_SLOTS] = { 1.0f, 1.0f, 1.0f };
+
+void media_set_paused(bool p) { s_main_paused = p; }
+bool media_paused(void) { return s_main_paused; }
+void media_set_slot_gain_db(int slot, float db)
+{
+    if (slot < 0 || slot >= MEDIA_SLOTS) return;
+    if (db > 0) db = 0;
+    if (db < -40) db = -40;
+    s_slot_gain[slot] = powf(10.0f, db / 20.0f);
+}
+
 static void audio_task(void *arg)
 {
     static int16_t buf[FRAMES * 2];
-    static int16_t media_buf[FRAMES * 2];
+    static int16_t mbuf[MEDIA_SLOTS][FRAMES * 2];
     uint32_t phase = 0;
-    float gain = 0.0f;  // current linear gain, ramped toward the target
-    bool was_media = false;
+    float tone_gain = 0.0f;                 // ramped like the media gains, so tone changes never click
+    float g[MEDIA_SLOTS] = { 0 };
     const float ramp_step = 1.0f / (SAMPLE_RATE * RAMP_MS / 1000.0f);  // full scale in RAMP_MS
+    // When the last source ends mid-signal (a stopped clip, a cut stream) the output must not jump to zero.
+    // It decays smoothly instead (time constant 0.12 s, inaudible after about 1.3 s) and then sits at exactly 0.
+    const float decay = expf(-1.0f / (SAMPLE_RATE * 0.12f));
+    float last_l = 0.0f, last_r = 0.0f;
+    int idle_blocks = 0;  // consecutive silent blocks (256 frames each, about 5.3 ms)
 
     while (true) {
         tone_state_t s = s_state;
@@ -73,52 +92,83 @@ static void audio_task(void *arg)
             s.enabled = false;
         }
 
-        bool media = media_active();
-        size_t have = media ? media_read(media_buf, FRAMES) : 0;
-        media = media_active() || have > 0;  // a session that just ended still delivers its last frames
-        if (was_media && !media) {
-            // The media gain is 1.0 here. Without this reset the idle tone generator would fade out
-            // from full scale and play a 100 ms beep at the end of every stream or clip.
-            gain = 0.0f;
+        // Read each channel. A paused main channel keeps reading only while it fades out.
+        size_t have[MEDIA_SLOTS] = { 0 };
+        float target[MEDIA_SLOTS] = { 0 };
+        int active_slots = 0;
+        for (int i = 0; i < MEDIA_SLOTS; i++) {
+            bool active = media_active_slot(i);
+            bool want = active && !(i == SLOT_MAIN && s_main_paused);
+            if (active && (want || g[i] > 0.0f)) have[i] = media_read_slot(i, mbuf[i], FRAMES);
+            if (!media_active_slot(i) && have[i] == 0) g[i] = 0.0f;  // a finished channel must not leave gain behind
+            else if (want) active_slots++;
+            target[i] = want ? s_slot_gain[i] : 0.0f;
         }
-        was_media = media;
-
-        float target;
-        if (media) {
-            target = 1.0f;
-        } else {
-            target = s.enabled ? powf(10.0f, s.level_dbfs / 20.0f) : 0.0f;
-        }
+        // The OSC synthesizer renders into these buffers; it reports whether anything is sounding.
+        static float synth_l[FRAMES], synth_r[FRAMES];
+        bool synth_on = synth_render(synth_l, synth_r, FRAMES);
+        float tone_target = (s.enabled && !media_active_slot(SLOT_MAIN)) ? powf(10.0f, s.level_dbfs / 20.0f) : 0.0f;
+        float mix_scale = active_slots > 1 ? 0.75f : 1.0f;  // headroom when two channels play together
         uint32_t inc = (uint32_t)(s.freq_hz / SAMPLE_RATE * 4294967296.0f);
 
-        // Unmute the amp only while there is signal; mute again once faded out.
-        bool want_sound = media || s.enabled;
+        // Unmute the amp only while there is signal; mute again once everything has faded out.
+        bool any_gain = tone_gain > 0.0f;
+        for (int i = 0; i < MEDIA_SLOTS; i++) any_gain = any_gain || g[i] > 0.0f || target[i] > 0.0f;
+        bool tail = fabsf(last_l) >= 0.5f || fabsf(last_r) >= 0.5f;  // still decaying toward 0
+        bool want_sound = any_gain || s.enabled || tail || synth_on || synth_busy();
+        if (want_sound) idle_blocks = 0;
+        else if (idle_blocks < 100000) idle_blocks++;
         if (want_sound && !s_dac_unmuted) {
             s_dac_unmuted = dac_set_mute(false);
-        } else if (!want_sound && gain == 0.0f && s_dac_unmuted) {
+        } else if (!want_sound && s_dac_unmuted && idle_blocks >= 190) {  // about 1 s of digital silence first
             s_dac_unmuted = !dac_set_mute(true);
         }
 
-        for (int i = 0; i < FRAMES; i++) {
-            if (gain < target) {
-                gain = fminf(gain + ramp_step, target);
-            } else if (gain > target) {
-                gain = fmaxf(gain - ramp_step, target);
+        for (int n = 0; n < FRAMES; n++) {
+            float l = 0.0f, r = 0.0f;
+            bool contributed = false;
+            for (int i = 0; i < MEDIA_SLOTS; i++) {
+                if (g[i] < target[i]) g[i] = fminf(g[i] + ramp_step, target[i]);
+                else if (g[i] > target[i]) g[i] = fmaxf(g[i] - ramp_step, target[i]);
+                if ((size_t)n < have[i]) {
+                    l += mbuf[i][2 * n] * g[i] * mix_scale;
+                    r += mbuf[i][2 * n + 1] * g[i] * mix_scale;
+                    contributed = true;
+                }
             }
-            if (media) {
-                bool ok = (size_t)i < have;
-                buf[2 * i]     = ok ? (int16_t)(media_buf[2 * i] * gain) : 0;
-                buf[2 * i + 1] = ok ? (int16_t)(media_buf[2 * i + 1] * gain) : 0;
-            } else {
+            if (tone_gain > 0.0f || tone_target > 0.0f) contributed = true;
+            if (synth_on) {
+                l += synth_l[n];
+                r += synth_r[n];
+                contributed = true;
+            }
+            if (tone_gain < tone_target) tone_gain = fminf(tone_gain + ramp_step, tone_target);
+            else if (tone_gain > tone_target) tone_gain = fmaxf(tone_gain - ramp_step, tone_target);
+            if (tone_gain > 0.0f) {
                 // Linear interpolation between table entries keeps high tones clean.
                 uint32_t idx = phase >> (32 - TABLE_BITS);
                 int32_t frac = (phase >> (16 - TABLE_BITS)) & 0xFFFF;  // 16-bit position between entries
                 int32_t a = s_table[idx], b = s_table[idx + 1];
-                int16_t v = (int16_t)((a + (((b - a) * frac) >> 16)) * gain);
-                buf[2 * i] = v;
-                buf[2 * i + 1] = v;
-                phase += inc;
+                float v = (a + (((b - a) * frac) >> 16)) * tone_gain;
+                l += v;
+                r += v;
             }
+            phase += inc;
+            if (contributed) {
+                last_l = l;
+                last_r = r;
+            } else {  // nothing is playing: let the last value fade to 0 instead of stepping to it
+                last_l = fabsf(last_l) < 0.5f ? 0.0f : last_l * decay;
+                last_r = fabsf(last_r) < 0.5f ? 0.0f : last_r * decay;
+                l = last_l;
+                r = last_r;
+            }
+            if (l > 32767.0f) l = 32767.0f;
+            if (l < -32768.0f) l = -32768.0f;
+            if (r > 32767.0f) r = 32767.0f;
+            if (r < -32768.0f) r = -32768.0f;
+            buf[2 * n] = (int16_t)l;
+            buf[2 * n + 1] = (int16_t)r;
         }
         eq_process(buf, FRAMES);  // speaker EQ for every source
         size_t written;
