@@ -286,7 +286,7 @@ static esp_err_t status_handler(httpd_req_t *req)
     media_kind_t mk = media_kind();
     size_t st_total = 0, st_free = 0;
     storage_info(&st_total, &st_free);
-    char json[1900];
+    char json[2000];
     snprintf(json, sizeof json,
              "{\"version\":\"%s\",\"built\":\"%s %s\",\"partition\":\"%s\",\"uptime_s\":%lld,\"ip\":\"%s\","
              "\"pvdd_v\":%.2f,\"fault\":%s,\"warning\":%s,"
@@ -295,7 +295,7 @@ static esp_err_t status_handler(httpd_req_t *req)
              "\"tone\":{\"on\":%s,\"freq_hz\":%.1f,\"db\":%.1f},"
              "\"est\":{\"vrms\":%.3f,\"watts\":%.3f,\"spl\":%.1f},"
              "\"est_peak\":{\"vrms\":%.3f,\"watts\":%.3f,\"spl\":%.1f},"
-             "\"media\":{\"src\":\"%s\",\"label\":\"%s\",\"buffer_ms\":%u,\"underruns\":%u},"
+             "\"media\":{\"src\":\"%s\",\"label\":\"%s\",\"buffer_ms\":%u,\"underruns\":%u,\"overlay\":\"%s\"},"
              "\"storage\":{\"total\":%u,\"free\":%u},"
              "\"player\":{\"state\":\"%s\",\"clip\":\"%s\",\"index\":%d,\"count\":%d},"
              "\"ambient\":{\"on\":%s,\"running\":%s,\"bg\":\"%s\",\"event\":\"%s\"},"
@@ -310,6 +310,7 @@ static esp_err_t status_handler(httpd_req_t *req)
              pk_v, pk_w, pk_spl,
              mk == MEDIA_STREAM ? "stream" : (mk == MEDIA_CLIP ? "clip" : "none"), media_label(),
              (unsigned)media_buffer_ms(), (unsigned)media_underruns(),
+             (media_active_slot(SLOT_MAIN) && media_active_slot(SLOT_EVENT)) ? media_label_slot(SLOT_EVENT) : "",  // a clip mixed over a stream
              (unsigned)st_total, (unsigned)st_free,
              player_state() == PLAYER_PLAYING ? "playing" : (player_state() == PLAYER_PAUSED ? "paused" : "idle"),
              player_current(), player_index(), player_count(),

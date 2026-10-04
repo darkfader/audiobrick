@@ -1,9 +1,10 @@
-# Home Assistant package for the Esparagus Audio Brick (firmware 0.9.8 or newer).
+# Home Assistant package for the Esparagus Audio Brick (firmware 1.1.0 or newer).
 #
 # What you get:
 #   * a media player "Audio Brick" with play, pause, stop, next, previous and a volume slider
 #     (next/previous walk through the clips stored on the board, alphabetically)
-#   * sensors: now playing, supply voltage, amp fault/warning, firmware version, ambient scene on/off
+#   * sensors: now playing, source (idle / stream / clip), amp power state (active / hiz / off), estimated loudest peak in dB SPL,
+#     supply voltage, amp fault/warning, firmware version, ambient scene on/off
 #   * a switch for the ambient scene (looping background plus random events)
 #   * services: rest_command.audiobrick_radio_play (preset 0-7), audiobrick_play_clip, audiobrick_synth_note
 #
@@ -14,7 +15,7 @@
 #   2. Add the web password of the board to <config>/secrets.yaml:
 #        audiobrick_password: "<the password you log in with>"
 #   3. Replace 192.168.2.40 below with the board's address (give it a fixed address / DHCP reservation
-#      in your router, the board has no mDNS name yet).
+#      in your router, or use  audiobrick.local  if Home Assistant can resolve mDNS names).
 #   4. Restart Home Assistant.
 #
 # The board speaks plain HTTP on your LAN; the password travels in the X-Token header. Keep it off the internet.
@@ -43,6 +44,17 @@ rest:
         value_template: "{{ value_json.pvdd_v }}"
         device_class: voltage
         unit_of_measurement: "V"
+        state_class: measurement
+      - name: "Audio Brick source"
+        unique_id: audiobrick_source
+        value_template: "{{ value_json.media.src }}"             # none / stream (PC, VBAN, radio) / clip
+      - name: "Audio Brick amp power state"
+        unique_id: audiobrick_amp_power_state
+        value_template: "{{ value_json.amp }}"                   # active / hiz (output off) / off (chip powered down)
+      - name: "Audio Brick loudest peak"
+        unique_id: audiobrick_loudest_peak
+        value_template: "{{ value_json.est_peak.spl }}"          # estimate, dB SPL, for a full-scale signal at the current volume
+        unit_of_measurement: "dB"
         state_class: measurement
       - name: "Audio Brick firmware"
         unique_id: audiobrick_firmware

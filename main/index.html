@@ -69,18 +69,11 @@ a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:
       <div class="stat"><b id="sIp">–</b><span>address</span></div>
     </div>
     <div style="margin-top:12px">
-      <div class="row" style="align-items:baseline;justify-content:space-between"><span>Volume</span><b id="sVolPct">–</b></div>
-      <input type="range" id="sVolBar" min="0" max="100" step="1" value="0" disabled aria-label="Current volume, read only" style="width:100%;margin:6px 0 2px">
-      <div class="mut small" id="sVolNote">100 % is the loudest the speaker profile allows.</div>
-    </div>
-  </div>
-
-  <div class="card" id="protCard">
-    <h2>Amp protection</h2>
     <div id="alerts" style="display:flex;flex-wrap:wrap;gap:6px"></div>
     <div class="row" style="margin-top:10px;align-items:center">
       <span class="small mut" id="protNote">Reads the amp chip's fault and warning registers. Faults stay latched until cleared.</span>
       <button id="clearFaults" class="hide">Clear latched faults</button>
+    </div>
     </div>
   </div>
 
@@ -92,6 +85,7 @@ a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:
       <div class="stat"><b id="eW">–</b><span>watts per channel</span></div>
     </div>
     <div class="meter" style="margin-top:8px"><i id="eBar"></i></div>
+    <div class="mut small" style="margin-top:4px">Volume: <b id="sVolPct">–</b> of the speaker profile's limit (100 % = the loudest it allows)</div>
     <div class="mut small" style="margin-top:6px" id="eNote">Calculated from the speaker profile, not measured. The bar fills toward your loudness limit.</div>
   </div>
 
@@ -247,6 +241,16 @@ a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:
     </div>
 
     <div class="card">
+      <h2>Amp power saving</h2>
+      <div class="mut small" style="margin-bottom:8px">When nothing has played for a while the amp output goes Hi-Z, and later the amp chip powers down completely. Any sound wakes it again with no audible delay. 0 = never.</div>
+      <div class="row">
+        <label>Output off (Hi-Z) after (seconds)<input type="number" id="pwHiz" min="0" max="3600" step="1"></label>
+        <label>Power down after (seconds)<input type="number" id="pwOff" min="0" max="86400" step="10"></label>
+      </div>
+      <div class="row" style="align-items:center"><button class="primary" id="pwSave">Save</button><span class="mut small" id="pwState"></span></div>
+    </div>
+
+    <div class="card">
       <h2>Firmware update</h2>
       <div class="row"><label>Firmware file (audiobrick.bin)<input type="file" id="fw" accept=".bin"></label><button id="upload">Upload and restart</button></div>
       <div class="mut small">The board keeps the previous image and rolls back if the new one does not come online.</div>
@@ -284,10 +288,18 @@ function setLogin(v){
   $('clearFaults').classList.toggle('hide',!v);
   document.querySelectorAll('.auth').forEach(e=>e.classList.toggle('hide',!v));
   loadClips();
-  if(v){loadProfile();featuresReady.then(()=>{if(F.eq)loadEq();if(F.ambient)loadAmb();if(F.net)loadNet(true);if(F.radio)loadRadio(true);if(F.synth)loadSynth(true)})}
+  if(v){loadProfile();loadPower();featuresReady.then(()=>{if(F.eq)loadEq();if(F.ambient)loadAmb();if(F.net)loadNet(true);if(F.radio)loadRadio(true);if(F.synth)loadSynth(true)})}
 }
 async function checkSession(){
   try{const s=await (await fetch('/session',{credentials:'same-origin'})).json();setLogin(!!s.logged_in)}catch(e){}
+}
+async function loadPower(){
+  try{const p=await (await fetch('/power')).json();
+    $('pwHiz').value=p.hiz_after_s;$('pwOff').value=p.off_after_s;showPower(p.state)}catch(e){}
+}
+function showPower(st){
+  const names={active:'awake',hiz:'output off (Hi-Z)',off:'powered down'};
+  const el=$('pwState');if(el)el.textContent='Amp is now: '+(names[st]||st||'?');
 }
 async function loadProfile(){
   const p=await (await fetch('/profile')).json();prof=p;
@@ -604,9 +616,7 @@ async function poll(){
     const s=await (await fetch('/status')).json();
     $('ver').textContent='firmware '+s.version+' · '+s.partition;
     $('sPvdd').textContent=s.pvdd_v>0?s.pvdd_v.toFixed(2):'–';
-    {const pct=Math.max(0,Math.min(100,Math.round(100*s.volume_level)));
-     $('sVolBar').value=pct;$('sVolPct').textContent=pct+' %';
-     $('sVolNote').textContent='Amp at '+s.vol_db+' dB. 100 % = '+(s.volume_level>0.02?Math.round((s.vol_db+70)/s.volume_level-70)+' dB':'the limit')+', the loudest the speaker profile allows (raise it under Speaker profile and limits).'}
+    $('sVolPct').textContent=Math.max(0,Math.min(100,Math.round(100*s.volume_level)))+' %';
     $('sVol').textContent=s.vol_db;
     $('sUp').textContent=fmtUp(s.uptime_s);
     $('sIp').textContent=s.ip||'–';
@@ -620,7 +630,8 @@ async function poll(){
     if(!volSynced){appliedVol=Math.min(s.vol_db,+$('mvol').max);$('mvol').value=appliedVol;$('mvolV').textContent=appliedVol;volSynced=true}
     applyFeatures(s.features);
     const m=s.media;
-    $('mstate').textContent=m.src==='none'?'Idle':((m.src==='stream'?'Streaming':'Playing clip '+m.label)+' · buffer '+m.buffer_ms+' ms'+(m.underruns?' · '+m.underruns+' dropouts':''));
+    showPower(s.amp);
+    $('mstate').textContent=m.src==='none'?'Idle':((m.src==='stream'?'Streaming':'Playing clip '+m.label)+' · buffer '+m.buffer_ms+' ms'+(m.underruns?' · '+m.underruns+' dropouts':'')+(m.overlay?' · with clip '+m.overlay+' on top':''));
     showTransport(s.player);
     $('ambState').textContent=s.ambient.on?(s.ambient.running?('running'+(s.ambient.bg?' · background: '+s.ambient.bg:'')+(s.ambient.event?' · now: '+s.ambient.event:'')):'on, paused while something else plays'):'off';
     const np=m.src==='clip'?m.label:'';if(np!==nowClip){nowClip=np;markPlaying()}
@@ -687,6 +698,12 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&playing)stopTone()}
 setInterval(()=>{if(playing)sendTone()},5000);   // keeps the firmware's dead-man timer alive
 // Start the frequency slider at 440 Hz.
 function initFreq(){appliedFreqP=Math.round(pOf(440));$('freqS').value=appliedFreqP;showTone()}
+$('pwSave').onclick=async()=>{
+  const h=parseInt($('pwHiz').value,10),o=parseInt($('pwOff').value,10);
+  if(!(h>=0)||!(o>=0)){say('Enter whole seconds (0 = never).',true);return}
+  if(h&&o&&o<=h){say('Power down must come later than Hi-Z.',true);return}
+  if(await call('/power',{body:'hiz_after_s='+h+'\noff_after_s='+o})){say('Power saving saved.');loadPower()}
+};
 $('save').onclick=async()=>{
   const q=new URLSearchParams({name:$('pname').value,ohms:$('pohms').value,sens:$('psens').value,
     dist:$('pdist').value,maxspl:$('pmax').value,ratedw:$('prated').value,minhz:$('pmin').value});
