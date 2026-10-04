@@ -21,6 +21,14 @@
 # The board speaks plain HTTP on your LAN; the password travels in the X-Token header. Keep it off the internet.
 # Not tested against a real Home Assistant yet: if something does not appear, check Settings -> System -> Logs.
 
+# Speaking a message over whatever is playing (text-to-speech): let Home Assistant create the audio file (for example with the tts.speak
+# service writing to /config/www/announce.mp3, or any mp3 you have) and send it to the Brick. The Brick plays it from memory, lowers a running
+# stream meanwhile ("Clips and announcements over a stream" card on the Brick's page sets how much) and returns to it afterwards. Files up to 400 KB.
+#   shell_command:
+#     audiobrick_announce: >-
+#       curl -s -X POST -H "X-Token: {{ token }}" --data-binary @/config/www/announce.mp3 http://192.168.2.40/announce
+# (a shell_command can take the password from a template variable you pass in the call; keep the real password in secrets.yaml.) Not tested yet.
+
 rest:
   - resource: http://192.168.2.40/status
     scan_interval: 5

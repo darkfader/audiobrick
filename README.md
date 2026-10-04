@@ -19,6 +19,7 @@ This repository is an independent community project, not made or endorsed by Son
   against a real Home Assistant yet).
 - **Idle power saving:** output fades to zero, the amp mutes, goes Hi-Z after 20 s and powers down after 10 minutes, and wakes with no audible cost
   (measured, see [docs/tas5825m-power-down.md](docs/tas5825m-power-down.md)).
+- **Announcements:** `POST /announce` plays an uploaded MP3/WAV (for example a Home Assistant text-to-speech message) over whatever is playing; the stream is lowered meanwhile (adjustable ducking). The page shows why the board last restarted.
 - **Adjustable streaming delay** (Low about 50 ms, the default; Normal about 170 ms; Safe about 400 ms buffer) and a network-synced clock (SNTP).
 - mDNS (`audiobrick.local`), safe mode after repeated crashes, rollback-protected OTA, build-time feature switches (`idf.py menuconfig`, "Audio Brick features").
 
@@ -38,6 +39,7 @@ Recommended: **one** playback device, no extra windows: VB-Cable plus a hidden b
 ## Documentation
 
 - [CLAUDE.md](CLAUDE.md): detailed project notes, pinout, measurements, lessons learned (written while building this; long).
+- [docs/connectors.md](docs/connectors.md): the board's connectors, free GPIOs and what they could be used for.
 - [docs/windows-setup.md](docs/windows-setup.md), [docs/tas5825m-power-down.md](docs/tas5825m-power-down.md), [docs/tas5825m-features.md](docs/tas5825m-features.md)
 - [tools/README.md](tools/README.md): measurement, test and Windows helper scripts.
 

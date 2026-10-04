@@ -20,3 +20,7 @@ void tone_set(bool enabled, float freq_hz, float level_dbfs);
 tone_state_t tone_get(void);
 // Dead-man timer: the tone is switched off ttl_s seconds from now unless this is called again.
 void tone_hold(int ttl_s);
+// While a clip or announcement plays over the main channel (a stream, radio, another clip), the main channel is lowered by this many dB
+// (0 = no ducking, max 30). The change is smooth (the mixer's 100 ms ramps).
+void tone_set_duck_db(int db);
+int tone_duck_db(void);

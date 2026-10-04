@@ -51,6 +51,18 @@ tone_state_t tone_get(void)
     return s_state;
 }
 
+static volatile float s_duck_gain = 0.25f;  // main channel gain while a clip is mixed over it (default -12 dB)
+static int s_duck_db = 12;
+
+void tone_set_duck_db(int db)
+{
+    if (db < 0) db = 0;
+    if (db > 30) db = 30;
+    s_duck_db = db;
+    s_duck_gain = db == 0 ? 1.0f : powf(10.0f, -(float)db / 20.0f);
+}
+int tone_duck_db(void) { return s_duck_db; }
+
 void tone_hold(int ttl_s)
 {
     if (ttl_s < 1) ttl_s = 1;
@@ -104,6 +116,7 @@ static void audio_task(void *arg)
             else if (want) active_slots++;
             target[i] = want ? s_slot_gain[i] : 0.0f;
         }
+        if (s_duck_gain < 1.0f && media_active_slot(SLOT_MAIN) && media_active_slot(SLOT_EVENT)) target[SLOT_MAIN] *= s_duck_gain;
         // The OSC synthesizer renders into these buffers; it reports whether anything is sounding.
         static float synth_l[FRAMES], synth_r[FRAMES];
         bool synth_on = synth_render(synth_l, synth_r, FRAMES);

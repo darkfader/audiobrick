@@ -25,6 +25,8 @@ typedef struct {
     bool is_wav;
     bool loop;
     int slot;
+    uint8_t *mem;      // when set, play from this buffer instead of a file (freed by the task)
+    size_t mem_len;
 } clip_job_t;
 
 // Per-playback working state (one per clip task, so several clips can play at once).
@@ -242,7 +244,7 @@ static void play_wav(FILE *f, ctx_t *c)
 static void clip_task(void *arg)
 {
     clip_job_t *job = arg;
-    FILE *f = fopen(job->path, "rb");
+    FILE *f = job->mem ? fmemopen(job->mem, job->mem_len, "rb") : fopen(job->path, "rb");
     ctx_t c = { .slot = job->slot };
     c.stereo = malloc(256 * 2 * sizeof(int16_t));
     c.out = malloc(OUT_FRAMES * 2 * sizeof(int16_t));
@@ -261,6 +263,7 @@ static void clip_task(void *arg)
     free(c.stereo);
     free(c.out);
     int slot = job->slot;
+    free(job->mem);
     free(job);
     media_finish_slot(slot);
     vTaskDelete(NULL);
@@ -291,6 +294,32 @@ bool clip_play_slot(const char *name, bool loop, int slot)
     if (xTaskCreate(clip_task, "clip", 28672, job, 4, NULL) != pdPASS) {
         media_abort_slot(slot);
         media_finish_slot(slot);
+        free(job);
+        return false;
+    }
+    return true;
+}
+
+bool clip_play_memory(uint8_t *data, size_t len, bool is_wav, const char *label, int slot)
+{
+    clip_job_t *job = calloc(1, sizeof *job);
+    if (!job) {
+        free(data);
+        return false;
+    }
+    job->mem = data;
+    job->mem_len = len;
+    job->is_wav = is_wav;
+    job->slot = slot;
+    if (!media_begin_slot(slot, MEDIA_CLIP, label)) {
+        free(data);
+        free(job);
+        return false;
+    }
+    if (xTaskCreate(clip_task, "clip", 28672, job, 4, NULL) != pdPASS) {
+        media_abort_slot(slot);
+        media_finish_slot(slot);
+        free(data);
         free(job);
         return false;
     }

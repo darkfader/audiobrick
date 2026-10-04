@@ -1,6 +1,7 @@
 // Esparagus Audio Brick (ESP32): Ethernet OTA + sine test tone.
 // Status LED: blue = no IP yet, green = online, red = amp fault.
 #include "board.h"
+#include "bootinfo.h"
 #include "dac.h"
 #include "eq.h"
 #include "esp_log.h"
@@ -9,7 +10,7 @@
 #include "led_strip.h"
 #include "speaker_limits.h"
 #include "media.h"
-void latency_load_saved(void);
+void playback_settings_load(void);
 #include "ambient.h"
 #include "net.h"
 #include "netaudio.h"
@@ -40,6 +41,7 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(err);
 
+    bootinfo_init();
     safemode_boot();
     limits_init();
     eq_init();
@@ -54,7 +56,7 @@ void app_main(void)
     if (!media_init() || !tone_init() || !dac_init()) {
         ESP_LOGE(TAG, "audio init failed");
     }
-    latency_load_saved();  // pre-buffer chosen on the web page
+    playback_settings_load();  // pre-buffer and ducking chosen on the web page
     storage_init();  // clips; fails harmlessly on boards that still have the old partition table
     player_init();
     radio_init();

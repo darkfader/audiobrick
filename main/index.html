@@ -66,6 +66,7 @@ a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:
       <div class="stat"><b id="sPvdd">–</b><span>supply (PVDD, V)</span></div>
       <div class="stat"><b id="sVol">–</b><span>amp volume (dB)</span></div>
       <div class="stat"><b id="sUp">–</b><span>uptime</span></div>
+      <div class="stat"><b id="sRst" title="">–</b><span id="sRstLbl">last restart</span></div>
       <div class="stat"><b id="sTime">–</b><span id="sTimeLbl">time (network)</span></div>
       <div class="stat"><b id="sIp">–</b><span>address</span></div>
     </div>
@@ -242,6 +243,15 @@ a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:
     </div>
 
     <div class="card">
+      <h2>Clips and announcements over a stream</h2>
+      <div class="mut small" style="margin-bottom:8px">When a clip or an announcement (POST /announce, for example a Home Assistant text-to-speech message) plays while a stream is running, the stream is lowered by this much and comes back afterwards. 0 = do not lower it.</div>
+      <div class="row" style="align-items:center">
+        <label>Lower the stream by (dB)<input type="number" id="duckDb" min="0" max="30" step="1" style="width:7em"></label>
+        <button class="primary" id="duckSave">Save</button>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>Streaming delay</h2>
       <div class="mut small" style="margin-bottom:8px">How much sound the Brick collects before it starts playing a stream or clip. Less = lower delay, but more risk of dropouts if the network hiccups. Wired Ethernet copes with the low setting; choose Normal or Safe if you hear dropouts.</div>
       <div class="row" style="align-items:center">
@@ -303,7 +313,7 @@ function setLogin(v){
   $('clearFaults').classList.toggle('hide',!v);
   document.querySelectorAll('.auth').forEach(e=>e.classList.toggle('hide',!v));
   loadClips();
-  if(v){loadProfile();loadPower();loadLatency();featuresReady.then(()=>{if(F.eq)loadEq();if(F.ambient)loadAmb();if(F.net)loadNet(true);if(F.radio)loadRadio(true);if(F.synth)loadSynth(true)})}
+  if(v){loadProfile();loadPower();loadLatency();loadDuck();featuresReady.then(()=>{if(F.eq)loadEq();if(F.ambient)loadAmb();if(F.net)loadNet(true);if(F.radio)loadRadio(true);if(F.synth)loadSynth(true)})}
 }
 async function checkSession(){
   try{const s=await (await fetch('/session',{credentials:'same-origin'})).json();setLogin(!!s.logged_in)}catch(e){}
@@ -313,6 +323,9 @@ async function loadLatency(){
     const opts=[...sel.options].map(o=>+o.value);
     if(!opts.includes(l.prebuffer_ms)){const o=document.createElement('option');o.value=l.prebuffer_ms;o.textContent='Custom ('+l.prebuffer_ms+' ms)';sel.appendChild(o)}
     sel.value=l.prebuffer_ms;$('latMs').value=l.prebuffer_ms;$('latNote').textContent=''}catch(e){}
+}
+async function loadDuck(){
+  try{$('duckDb').value=(await (await fetch('/duck')).json()).duck_db}catch(e){}
 }
 async function loadPower(){
   try{const p=await (await fetch('/power')).json();
@@ -652,6 +665,9 @@ async function poll(){
     applyFeatures(s.features);
     const m=s.media;
     showPower(s.amp);
+    if(s.boot){const r=$('sRst');r.textContent=s.boot.reason.split(' (')[0];r.title=s.boot.reason;
+      r.style.color=s.boot.abnormal?'var(--warn)':'';
+      $('sRstLbl').textContent='last restart · boot #'+s.boot.count+(s.boot.crashes?' · '+s.boot.crashes+' abnormal':'')}
     $('sTime').textContent=s.time_synced?s.time.slice(11):'–';$('sTimeLbl').textContent=s.time_synced?('time ('+s.time.slice(0,10)+')'):'time (not synced yet)';
     $('mstate').textContent=m.src==='none'?'Idle':((m.src==='stream'?'Streaming':'Playing clip '+m.label)+' · buffer '+m.buffer_ms+' ms'+(m.underruns?' · '+m.underruns+' dropouts':'')+(m.overlay?' · with clip '+m.overlay+' on top':''));
     showTransport(s.player);
@@ -720,6 +736,11 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&playing)stopTone()}
 setInterval(()=>{if(playing)sendTone()},5000);   // keeps the firmware's dead-man timer alive
 // Start the frequency slider at 440 Hz.
 function initFreq(){appliedFreqP=Math.round(pOf(440));$('freqS').value=appliedFreqP;showTone()}
+$('duckSave').onclick=async()=>{
+  const db=parseInt($('duckDb').value,10);
+  if(!(db>=0&&db<=30)){say('Enter 0 to 30 dB.',true);return}
+  if(await call('/duck?db='+db)){say(db?('A stream is lowered by '+db+' dB while a clip plays over it.'):'Ducking is off.');loadDuck()}
+};
 $('latSel').onchange=()=>{$('latMs').value=$('latSel').value};
 $('latMs').oninput=()=>{const v=$('latMs').value,o=[...$('latSel').options].find(x=>x.value===v);if(o)$('latSel').value=v};
 $('latSave').onclick=async()=>{
