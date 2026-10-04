@@ -12,7 +12,7 @@
 static const char *TAG = "media";
 
 #define FRAME_BYTES      4
-#define DEFAULT_PREBUFFER_MS 170   // before playback starts; the buffer then stays at about this level for a live stream
+#define DEFAULT_PREBUFFER_MS 50    // before playback starts; the buffer then stays at about this level for a live stream (wired Ethernet copes with 50)
 static uint32_t s_prebuf_frames = DEFAULT_PREBUFFER_MS * 48;
 
 void media_set_prebuffer_ms(uint32_t ms)

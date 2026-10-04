@@ -243,13 +243,14 @@ a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:
 
     <div class="card">
       <h2>Streaming delay</h2>
-      <div class="mut small" style="margin-bottom:8px">How much sound the Brick collects before it starts playing a stream or clip. Less = lower delay, but more risk of dropouts if the network hiccups. Wired Ethernet usually copes with the low setting.</div>
+      <div class="mut small" style="margin-bottom:8px">How much sound the Brick collects before it starts playing a stream or clip. Less = lower delay, but more risk of dropouts if the network hiccups. Wired Ethernet copes with the low setting; choose Normal or Safe if you hear dropouts.</div>
       <div class="row" style="align-items:center">
         <label>Delay<select id="latSel">
-          <option value="50">Low latency (about 50 ms)</option>
+          <option value="50">Low latency (about 50 ms, default)</option>
           <option value="170">Normal (about 170 ms)</option>
           <option value="400">Safe (about 400 ms)</option>
         </select></label>
+        <label>or exactly (ms)<input type="number" id="latMs" min="20" max="600" step="5" style="width:7em"></label>
         <button class="primary" id="latSave">Apply</button><span class="mut small" id="latNote"></span>
       </div>
     </div>
@@ -311,7 +312,7 @@ async function loadLatency(){
   try{const l=await (await fetch('/latency')).json();const sel=$('latSel');
     const opts=[...sel.options].map(o=>+o.value);
     if(!opts.includes(l.prebuffer_ms)){const o=document.createElement('option');o.value=l.prebuffer_ms;o.textContent='Custom ('+l.prebuffer_ms+' ms)';sel.appendChild(o)}
-    sel.value=l.prebuffer_ms;$('latNote').textContent=''}catch(e){}
+    sel.value=l.prebuffer_ms;$('latMs').value=l.prebuffer_ms;$('latNote').textContent=''}catch(e){}
 }
 async function loadPower(){
   try{const p=await (await fetch('/power')).json();
@@ -719,8 +720,11 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&playing)stopTone()}
 setInterval(()=>{if(playing)sendTone()},5000);   // keeps the firmware's dead-man timer alive
 // Start the frequency slider at 440 Hz.
 function initFreq(){appliedFreqP=Math.round(pOf(440));$('freqS').value=appliedFreqP;showTone()}
+$('latSel').onchange=()=>{$('latMs').value=$('latSel').value};
+$('latMs').oninput=()=>{const v=$('latMs').value,o=[...$('latSel').options].find(x=>x.value===v);if(o)$('latSel').value=v};
 $('latSave').onclick=async()=>{
-  const ms=parseInt($('latSel').value,10);
+  const ms=parseInt($('latMs').value,10);
+  if(!(ms>=20&&ms<=600)){say('Enter 20 to 600 milliseconds.',true);return}
   if(await call('/latency?ms='+ms)){say('Streaming delay set to about '+ms+' ms.');loadLatency()}
 };
 $('pwSave').onclick=async()=>{

@@ -15,7 +15,7 @@ enum { SLOT_MAIN = 0, SLOT_BG = 1, SLOT_EVENT = 2 };
 
 bool media_init(void);
 // How much audio is collected before a stream or clip starts playing, and so roughly the delay of a live stream
-// (20-600 ms, default 170). Lower = less delay but more risk of dropouts when the network hiccups.
+// (20-600 ms, default 50). Lower = less delay but more risk of dropouts when the network hiccups.
 void media_set_prebuffer_ms(uint32_t ms);
 uint32_t media_prebuffer_ms(void);
 

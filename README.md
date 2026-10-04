@@ -19,7 +19,7 @@ This repository is an independent community project, not made or endorsed by Son
   against a real Home Assistant yet).
 - **Idle power saving:** output fades to zero, the amp mutes, goes Hi-Z after 20 s and powers down after 10 minutes, and wakes with no audible cost
   (measured, see [docs/tas5825m-power-down.md](docs/tas5825m-power-down.md)).
-- **Adjustable streaming delay** (Low about 50 ms, Normal about 170 ms, Safe about 400 ms buffer) and a network-synced clock (SNTP).
+- **Adjustable streaming delay** (Low about 50 ms, the default; Normal about 170 ms; Safe about 400 ms buffer) and a network-synced clock (SNTP).
 - mDNS (`audiobrick.local`), safe mode after repeated crashes, rollback-protected OTA, build-time feature switches (`idf.py menuconfig`, "Audio Brick features").
 
 ## Getting started
