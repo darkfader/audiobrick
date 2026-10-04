@@ -9,6 +9,9 @@
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_netif.h"
+#include "esp_netif_sntp.h"
+#include <stdlib.h>
+#include <time.h>
 #include "sdkconfig.h"
 #if CONFIG_AB_FEATURE_MDNS
 #include "mdns.h"
@@ -63,6 +66,14 @@ static void on_got_ip(void *arg, esp_event_base_t base, int32_t id, void *data)
     snprintf(s_ip, sizeof s_ip, IPSTR, IP2STR(&ev->ip_info.ip));
     s_has_ip = true;
     ESP_LOGI(TAG, "got IP %s", s_ip);
+    static bool sntp_started;
+    if (!sntp_started) {  // network time: the clock is set (and kept right) from the pool, shown in the page's status
+        sntp_started = true;
+        setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);  // Central European time; make this configurable when someone needs another zone
+        tzset();
+        esp_sntp_config_t cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+        if (esp_netif_sntp_init(&cfg) != ESP_OK) ESP_LOGW(TAG, "SNTP init failed");
+    }
 }
 
 bool net_start(void)

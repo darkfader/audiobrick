@@ -12,7 +12,16 @@
 static const char *TAG = "media";
 
 #define FRAME_BYTES      4
-#define PREBUFFER_FRAMES 8000  // about 170 ms before playback starts
+#define DEFAULT_PREBUFFER_MS 170   // before playback starts; the buffer then stays at about this level for a live stream
+static uint32_t s_prebuf_frames = DEFAULT_PREBUFFER_MS * 48;
+
+void media_set_prebuffer_ms(uint32_t ms)
+{
+    if (ms < 20) ms = 20;
+    if (ms > 600) ms = 600;  // the main ring holds about 1.4 s
+    s_prebuf_frames = ms * 48;
+}
+uint32_t media_prebuffer_ms(void) { return s_prebuf_frames / 48; }
 
 // Ring sizes are powers of two: the main slot holds about 1.4 s, the ambient slots about 0.7 s.
 static const uint32_t RING_BYTES[MEDIA_SLOTS] = { 256 * 1024, 128 * 1024, 128 * 1024 };
@@ -133,7 +142,7 @@ size_t media_read_slot(int slot, int16_t *out, size_t frames)
     }
     uint32_t used = __atomic_load_n(&s->head, __ATOMIC_ACQUIRE) - s->tail;
     if (!s->started) {
-        if (used >= PREBUFFER_FRAMES * FRAME_BYTES || (s->finished && used > 0)) {
+        if (used >= s_prebuf_frames * FRAME_BYTES || (s->finished && used > 0)) {
             s->started = true;
         } else {
             if (s->finished) s->kind = MEDIA_NONE;  // ended before anything was played

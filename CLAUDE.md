@@ -61,7 +61,7 @@ TAS5825M I2C address is **0x4C** (verified by I2C scan; the only device on the b
 
 ## Current firmware (v1.1.0, ESP-IDF, in this folder)
 
-Later in v1.1.x: a clip played from the web page (or `/clips/play`) while a live stream (PC sound via the cable, VBAN, radio) owns the main channel is mixed on top through the mixer's one-shot channel (`SLOT_EVENT`) instead of being refused (`clips_http.c`; Stop ends it too; mic test: the 440 Hz stream tone stays, -2 dB from the 0.75 mix scale, while the clip adds +6 dB in 500 Hz-5 kHz). `/status` has `est_peak` (loudest possible peak at the current volume) and the page's Estimated loudness card shows it when no test tone is on. Page: the amp protection chips now live in the Status card, the percentage of the speaker-profile limit sits under the Estimated loudness bar, and a login-only 'Amp power saving' card edits `/power` (Hi-Z and power-down delays). `/status.media.overlay` names a clip mixed over a stream. Access audit (2026-10-04, live, no token): all 27 state-changing POSTs answer 401 except `/logout`; GETs for status, profile, session and the page are public on purpose (logged-out page, Home Assistant), the other GETs (settings, clip names) are readable on the LAN without login. Flash the Brick only when nothing is playing (a flash during a stream cuts it for about 10 s).
+Later in v1.1.x: a clip played from the web page (or `/clips/play`) while a live stream (PC sound via the cable, VBAN, radio) owns the main channel is mixed on top through the mixer's one-shot channel (`SLOT_EVENT`) instead of being refused (`clips_http.c`; Stop ends it too; mic test: the 440 Hz stream tone stays, -2 dB from the 0.75 mix scale, while the clip adds +6 dB in 500 Hz-5 kHz). `/status` has `est_peak` (loudest possible peak at the current volume) and the page's Estimated loudness card shows it when no test tone is on. Page: the amp protection chips now live in the Status card, the percentage of the speaker-profile limit sits under the Estimated loudness bar, and a login-only 'Amp power saving' card edits `/power` (Hi-Z and power-down delays). `/status.media.overlay` names a clip mixed over a stream. Access audit (2026-10-04, live, no token): all 27 state-changing POSTs answer 401 except `/logout`; GETs for status, profile, session and the page are public on purpose (logged-out page, Home Assistant), the other GETs (settings, clip names) are readable on the LAN without login. Latency (2026-10-04, `tools/cable_latency_test.py --mic`): the delay of PC sound over the cable is the PC chain (app -> WASAPI -> VB-Cable -> capture, about 65-80 ms) plus the Brick's stream buffer (about equal to the pre-buffer, 20-600 ms, `GET/POST /latency`, saved in NVS, default 170) plus the output stage (I2S DMA 6 x 256 frames = 32 ms + one 5.3 ms mixer block). Measured with the mic (includes its ~45 ms): Low 50 ms -> 206 ms, Normal 170 ms -> 316 ms, Safe 400 ms -> 550 ms; the differences match the buffer sizes. Low ran 40 s with the buffer at 24-41 ms and 0 underruns on wired Ethernet. The sender uses TCP_NODELAY and a 32 KB send buffer; TCP adds about 1 ms. Further savings would be VB-Cable's own Max Latency setting (its control panel), a shorter I2S DMA queue, or both at some risk of glitches. The Brick now syncs its clock with SNTP (pool.ntp.org, TZ fixed to Central European time in net.c); `status.time` / `time_synced`, shown in the Status card. Flash the Brick only when nothing is playing (a flash during a stream cuts it for about 10 s).
 
 v1.1.0 adds: idle amp power-down (Hi-Z after 20 s, PWDN off after 10 min, `/power`, `status.amp`, shown on the page's amp chip; write-up in `docs/tas5825m-power-down.md`) and mDNS (`audiobrick.local`). The page shows streaming state in the Network audio card and the Playback line (buffer ms, dropouts).
 
@@ -140,6 +140,29 @@ Test speakers: two Yamaha NS-B40 satellites (6 ohm, 30 W nominal / 100 W max, 83
 3. **OSC control:** UDP OSC server over W5500 Ethernet (e.g. `/synth/freq`, `/synth/vol`, `/mute`), mapping onto I2S sample generation and TAS5825M volume registers.
 4. **Bluetooth A2DP sink (optional):** ESP32 only. Ethernet remains the preferred path. Check Wi-Fi/BT coexistence if both are on.
 5. **OSC-controlled audio e-stim pattern generator:** see the safety section. Do not connect anything to the body until the safety checks are done.
+
+## Planned: two Bricks in sync (noted 2026-10-04, not implemented)
+
+The owner expects a second Audio Brick (probably the ESP32-S3 replacement; pins differ, see the pin table) and wants both to play in sync, as a stereo pair
+or multi-room. Needs timestamped audio plus a clock sync between the sender and each Brick. Internet NTP (about 5-30 ms) is too coarse; on a wired LAN a
+four-timestamp exchange (like NTP) gets to about 1 ms. Playback then happens at `pts + fixed delay`, and the Brick trims the small drift between the
+sender's clock and its own I2S clock by dropping or repeating a sample now and then (or resampling by +-100 ppm).
+
+Why not the existing network audio inputs: **VBAN** packets carry only a running packet counter (loss/reorder detection), no timestamp, and Scream has none
+either, so two receivers cannot be lined up from them; with a plain TCP/UDP stream each Brick just starts after its own pre-buffer. Snapcast's WireChunk and
+RTP carry timestamps (RTP plus RTCP sender reports, or AES67 with PTP, are the standard way, heavier than needed here).
+
+Routes weighed:
+1. **Snapcast-compatible client** in the firmware (open protocol, TCP 1704: Hello, ServerSettings, CodecHeader, WireChunk, Time messages; PCM codec is enough).
+   Pros: proven sync, per-client volume/mute, groups, ready apps and Home Assistant integration. Cons: needs a snapserver (Windows build exists) on the PC or a Pi,
+   fed from the VB-Cable; the sender's silence/idle handling and the volume-key follower would have to be reworked around it.
+2. **Own timestamped stream** (UDP, multicast so N Bricks get one copy) with a small LAN time-sync service, built into `tools/brick_sender.py`.
+   Pros: no extra server, fits the current one-device setup. Cons: own protocol to design, test and maintain, nothing else can talk to it.
+3. Both, own protocol first.
+
+Already in place that helps: SNTP clock on the Brick (`status.time`), adjustable pre-buffer (`/latency`, a stream's delay is about the pre-buffer plus the PC chain),
+the hidden sender with silence handling and stall recovery. Testable on ONE Brick before the second arrives: play a click on the PC's own speakers at time T and
+have the Brick play the same click at T + D, and compare the two with the microphone. A pair also needs a per-Brick channel select (left / right / both).
 
 ## E-stim safety (read before experiment 5)
 

@@ -9,6 +9,7 @@
 #include "led_strip.h"
 #include "speaker_limits.h"
 #include "media.h"
+void latency_load_saved(void);
 #include "ambient.h"
 #include "net.h"
 #include "netaudio.h"
@@ -53,6 +54,7 @@ void app_main(void)
     if (!media_init() || !tone_init() || !dac_init()) {
         ESP_LOGE(TAG, "audio init failed");
     }
+    latency_load_saved();  // pre-buffer chosen on the web page
     storage_init();  // clips; fails harmlessly on boards that still have the old partition table
     player_init();
     radio_init();

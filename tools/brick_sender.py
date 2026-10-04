@@ -215,7 +215,7 @@ def run(host):
                     log("CABLE Output not found (is VB-Cable installed and enabled?); retrying")
                     time.sleep(10)
                     continue
-                stream = sd.InputStream(samplerate=FS, channels=2, device=dev, dtype="float32", blocksize=960,
+                stream = sd.InputStream(samplerate=FS, channels=2, device=dev, dtype="float32", blocksize=480,
                                         callback=cb, extra_settings=sd.WasapiSettings(auto_convert=True))
                 stream.start()
                 log("capturing CABLE Output")

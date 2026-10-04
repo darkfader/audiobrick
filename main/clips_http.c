@@ -17,6 +17,7 @@
 #include "dac.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
+#include "nvs.h"
 #include "speaker_limits.h"
 #include "media.h"
 #include "ota_http.h"
@@ -232,6 +233,45 @@ static esp_err_t stop_handler(httpd_req_t *req)
     return httpd_resp_sendstr(req, "stopped\n");
 }
 
+// GET /latency -> {"prebuffer_ms":170}   POST /latency?ms=50 (login): how much audio is collected before playback starts.
+static esp_err_t latency_get(httpd_req_t *req)
+{
+    char out[48];
+    snprintf(out, sizeof out, "{\"prebuffer_ms\":%u}\n", (unsigned)media_prebuffer_ms());
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, out);
+}
+
+static esp_err_t latency_post(httpd_req_t *req)
+{
+    if (!web_authorized(req)) return web_deny(req);
+    char query[32], val[8];
+    if (httpd_req_get_url_query_str(req, query, sizeof query) != ESP_OK ||
+        httpd_query_key_value(query, "ms", val, sizeof val) != ESP_OK) {
+        return bad_request(req, "missing ms (20-600)\n");
+    }
+    int ms = atoi(val);
+    if (ms < 20 || ms > 600) return bad_request(req, "ms must be 20-600\n");
+    media_set_prebuffer_ms((uint32_t)ms);
+    nvs_handle_t h;
+    if (nvs_open("audiobrick", NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u16(h, "prebuf_ms", (uint16_t)ms);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    return latency_get(req);
+}
+
+void latency_load_saved(void)
+{
+    nvs_handle_t h;
+    uint16_t ms;
+    if (nvs_open("audiobrick", NVS_READONLY, &h) == ESP_OK) {
+        if (nvs_get_u16(h, "prebuf_ms", &ms) == ESP_OK && ms >= 20 && ms <= 600) media_set_prebuffer_ms(ms);
+        nvs_close(h);
+    }
+}
+
 static esp_err_t volume_handler(httpd_req_t *req)
 {
     if (!web_authorized(req)) return web_deny(req);
@@ -265,6 +305,8 @@ void ota_http_register_more(httpd_handle_t server)
         { .uri = "/clips/rename", .method = HTTP_POST, .handler = rename_handler },
         { .uri = "/media/stop",   .method = HTTP_POST, .handler = stop_handler },
         { .uri = "/volume",       .method = HTTP_POST, .handler = volume_handler },
+        { .uri = "/latency",      .method = HTTP_GET,  .handler = latency_get },
+        { .uri = "/latency",      .method = HTTP_POST, .handler = latency_post },
     };
     for (size_t i = 0; i < sizeof uris / sizeof uris[0]; i++) {
         httpd_register_uri_handler(server, &uris[i]);

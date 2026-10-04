@@ -21,7 +21,7 @@
 
 static const char *TAG = "netaudio";
 
-#define MAX_LATENCY_MS   350    // drop packets beyond this so a live source never builds up delay
+#define LATENCY_HEADROOM_MS 180  // drop packets once the buffer is this far above the pre-buffer, so a live source never builds up delay
 #define IDLE_END_MS      600    // no packets for this long: the stream is over
 #define LOCKOUT_MS       1000   // after a stop, wait for the sender to go quiet before accepting it again
 #define SILENCE_END_MS   4000   // a sender that keeps sending digital silence (Voicemeeter does) this long is treated as idle
@@ -139,7 +139,7 @@ static void deliver(session_t *s, const char *label, const struct sockaddr_in *f
         inet_ntop(AF_INET, &from->sin_addr, s->stat.source, sizeof s->stat.source);
         ESP_LOGI(TAG, "%s stream from %s at %u Hz", s->label, s->stat.source, (unsigned)rate);
     }
-    if (media_buffer_ms() > MAX_LATENCY_MS) { s->stat.dropped++; return; }
+    if (media_buffer_ms() > media_prebuffer_ms() + LATENCY_HEADROOM_MS) { s->stat.dropped++; return; }
 
     if (rate == 48000) {
         media_write_nb_slot(SLOT_MAIN, frames, n);
