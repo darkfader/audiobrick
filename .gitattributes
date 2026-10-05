@@ -1,0 +1,26 @@
+# Line endings: text files are stored with LF in the repository. Windows checkouts get CRLF only where the tool needs it.
+* text=auto
+
+# Always LF, also on Windows (shell scripts and the CI workflow break with CRLF)
+*.sh   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# Windows scripts keep CRLF
+*.ps1  text eol=crlf
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# Never touched or diffed as text
+*.mp3  binary
+*.wav  binary
+*.png  binary
+*.jpg  binary
+*.gif  binary
+*.pdf  binary
+*.bin  binary
+*.elf  binary
+*.zip  binary
+
+# Generated or third-party, hidden from language statistics and diffs on GitHub
+main/sources/minimp3.h linguist-vendored
