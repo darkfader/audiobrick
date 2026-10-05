@@ -581,8 +581,8 @@ static esp_err_t scan_get(httpd_req_t *req)
     strlcat(json, s_scanning ? "true" : "false", sizeof json);
     strlcat(json, ",\"devices\":[", sizeof json);
     for (int i = 0; i < s_scan_n; i++) {
-        char one[100];
-        snprintf(one, sizeof one, "%s{\"addr\":\"%s\",\"name\":\"%s\",\"rssi\":%d}", i ? "," : "", s_scan[i].addr, s_scan[i].name, s_scan[i].rssi);
+        char one[128];
+        snprintf(one, sizeof one, "%s{\"addr\":\"%.17s\",\"name\":\"%.31s\",\"rssi\":%d}", i ? "," : "", s_scan[i].addr, s_scan[i].name, s_scan[i].rssi);
         strlcat(json, one, sizeof json);
     }
     strlcat(json, "]}\n", sizeof json);

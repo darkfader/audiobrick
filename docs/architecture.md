@@ -50,7 +50,7 @@ editing that list.
 | Task | Where | Priority / core | Does |
 |---|---|---|---|
 | `audio` | `audio/tone.c` | 6, core 1 | the mixer; the only writer of the I2S DMA; never blocks except on the DMA |
-| `clip`, `radio` | `sources/` | 4 | one decoder each (stack 28 KB: minimp3 uses ~18 KB of stack); two clip decoders at once cost ~60 KB of internal RAM each |
+| `clip`, `radio` | `sources/` | 4, core 1 | one decoder each (stack 28 KB: minimp3 uses ~18 KB of stack). Stack and work buffers are in PSRAM, so a clip is loaded into PSRAM first (a PSRAM-stack task must never read flash); see docs/wifi.md |
 | `stream`, `vban`, `scream`, `osc` | `sources/` | 4 | socket receivers |
 | `player`, `ambient` | `sources/` | 3 | the transport buttons and the random-event scheduler |
 | HTTP server | `web/ota_http.c` | IDF default | all web handlers run here, one request at a time per connection |

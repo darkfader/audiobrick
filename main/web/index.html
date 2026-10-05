@@ -290,7 +290,8 @@ a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:
 
     <div class="card" data-feature="wifi">
       <h2>Wi-Fi</h2>
-      <div class="mut small" style="margin-bottom:8px">A second connection next to the Ethernet cable (the cable is used first). The Brick remembers up to 8 networks and joins the strongest one it can hear. Wi-Fi stays off until you add a network.</div>
+      <div class="mut small" style="margin-bottom:8px">A second connection next to the Ethernet cable (the cable is used first). The Brick remembers up to 8 networks and joins the strongest one it can hear. Wi-Fi stays off until you switch it on or add a network.</div>
+      <div class="mut small" style="margin-bottom:8px"><b>Known limit:</b> while Wi-Fi is on, playing a clip or announcement on top of a Bluetooth stream can make the music stutter (Bluetooth alone, or clips alone, are fine). Keep Wi-Fi off if you use Bluetooth with clips. Details: docs/wifi.md.</div>
       <div class="row" style="align-items:center">
         <label style="flex:0 0 auto;flex-direction:row;align-items:center;gap:8px;color:var(--fg);font-size:14px"><input type="checkbox" id="wfOn" style="width:auto"> Wi-Fi on</label>
         <button id="wfScan">Scan for networks</button>
@@ -414,7 +415,7 @@ async function loadBt(fill){
 async function loadWifi(){
   try{const r=await fetch('/wifi',{credentials:'same-origin'});if(!r.ok)return;const w=await r.json();
     $('wfOn').checked=w.enabled;
-    $('wfState').textContent=!w.enabled?'Off.':!w.running?'Starting…':w.connected?('Connected to "'+w.ssid+'" · '+w.ip+' · '+w.rssi+' dBm'):'Looking for a remembered network…';
+    $('wfState').textContent=!w.enabled?'Off. Switch it on to scan, or add a network below (that switches it on too).':!w.running?'Starting…':w.connected?('Connected to "'+w.ssid+'" · '+w.ip+' · '+w.rssi+' dBm'):'Looking for a remembered network…';
     const k=$('wfKnown');k.textContent='';
     if(w.known.length){const h=document.createElement('div');h.className='mut';h.textContent='Remembered networks:';k.appendChild(h)}
     w.known.forEach(n=>{const d=document.createElement('div');d.className='row';d.style.cssText='align-items:center;gap:8px;margin-top:4px';

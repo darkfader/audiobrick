@@ -9,6 +9,10 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/idf_additions.h"
+#include "esp_heap_caps.h"
+
+#define CLIP_RAM_MAX (1536 * 1024)   // clips up to this size are loaded into PSRAM before playing
 #include "media.h"
 #include "storage.h"
 
@@ -30,6 +34,7 @@ typedef struct {
     bool loop;
     int slot;
     uint8_t *mem;      // when set, play from this buffer instead of a file (freed by the task)
+    bool psram_stack;  // the task stack is in PSRAM: only possible while the task never reads flash, so the data must be in `mem`
     size_t mem_len;
 } clip_job_t;
 
@@ -58,6 +63,17 @@ bool clip_name_valid(const char *name)
 }
 
 // Sends decoded interleaved PCM (1 or 2 channels at rate Hz) into the player slot. False once aborted.
+// Core 0 belongs to the Wi-Fi and Bluetooth stacks, which starve a decoder that lands there (the clip then stutters, measured with Wi-Fi on).
+// Core 1 only runs the audio mixer.
+#define DECODER_CORE 1
+
+// Decoder work buffers are big (about 28 KB per decoder) and internal RAM is scarce: take them from PSRAM, fall back to internal RAM if that fails.
+static void *work_alloc(size_t n)
+{
+    void *p = heap_caps_calloc(1, n, MALLOC_CAP_SPIRAM);
+    return p ? p : calloc(1, n);
+}
+
 static bool push_pcm(ctx_t *c, const int16_t *pcm, size_t frames, int channels, uint32_t rate)
 {
     if (rate != c->cur_rate) {
@@ -121,9 +137,9 @@ static bool parse_xing(const uint8_t *fr, int len, uint32_t *frames, int *delay,
 
 static void play_mp3(FILE *f, ctx_t *c)
 {
-    mp3dec_t *dec = calloc(1, sizeof *dec);
-    uint8_t *in = malloc(IN_BUF);
-    int16_t *pcm = malloc(MINIMP3_MAX_SAMPLES_PER_FRAME * sizeof(int16_t));
+    mp3dec_t *dec = work_alloc(sizeof *dec);
+    uint8_t *in = work_alloc(IN_BUF);
+    int16_t *pcm = work_alloc(MINIMP3_MAX_SAMPLES_PER_FRAME * sizeof(int16_t));
     if (!dec || !in || !pcm) {
         ESP_LOGE(TAG, "out of memory");
         goto done;
@@ -226,7 +242,7 @@ static void play_wav(FILE *f, ctx_t *c)
                          fmt, bits, channels, (unsigned)rate);
                 return;
             }
-            int16_t *pcm = malloc(1024 * channels * sizeof(int16_t));
+            int16_t *pcm = work_alloc(1024 * channels * sizeof(int16_t));
             if (!pcm) return;
             uint32_t left = size;
             while (left > 0 && !media_aborted_slot(c->slot)) {
@@ -250,8 +266,8 @@ static void clip_task(void *arg)
     clip_job_t *job = arg;
     FILE *f = job->mem ? fmemopen(job->mem, job->mem_len, "rb") : fopen(job->path, "rb");
     ctx_t c = { .slot = job->slot };
-    c.stereo = malloc(256 * 2 * sizeof(int16_t));
-    c.out = malloc(OUT_FRAMES * 2 * sizeof(int16_t));
+    c.stereo = work_alloc(256 * 2 * sizeof(int16_t));
+    c.out = work_alloc(OUT_FRAMES * 2 * sizeof(int16_t));
     if (f && c.stereo && c.out) {
         do {
             int64_t started = esp_timer_get_time();
@@ -267,10 +283,12 @@ static void clip_task(void *arg)
     free(c.stereo);
     free(c.out);
     int slot = job->slot;
+    bool psram_stack = job->psram_stack;
     free(job->mem);
     free(job);
     media_finish_slot(slot);
-    vTaskDelete(NULL);
+    if (psram_stack) vTaskDeleteWithCaps(NULL);
+    else vTaskDelete(NULL);
 }
 
 bool clip_play_slot(const char *name, bool loop, int slot)
@@ -288,16 +306,35 @@ bool clip_play_slot(const char *name, bool loop, int slot)
         free(job);
         return false;
     }
+    // minimp3 keeps about 18 KB of scratch data on the stack while decoding a frame. A task that reads flash must have its stack in internal RAM (the
+    // flash driver switches the cache off, and PSRAM is unreachable then), but internal RAM is scarce. So a clip of ordinary size is read into PSRAM here,
+    // in the caller's task, and the decoder task (stack in PSRAM) plays from memory. Only a very large file keeps the old way: internal stack, reads the file.
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (size > 0 && size <= CLIP_RAM_MAX) {
+        uint8_t *buf = heap_caps_malloc((size_t)size, MALLOC_CAP_SPIRAM);
+        if (buf && fread(buf, 1, (size_t)size, f) == (size_t)size) {
+            job->mem = buf;
+            job->mem_len = (size_t)size;
+            job->psram_stack = true;
+        } else {
+            free(buf);
+        }
+    }
     fclose(f);
 
     if (!media_begin_slot(slot, MEDIA_CLIP, name)) {
+        free(job->mem);
         free(job);
         return false;
     }
-    // minimp3 keeps about 18 KB of scratch data on the stack while decoding a frame.
-    if (xTaskCreate(clip_task, "clip", 28672, job, 4, NULL) != pdPASS) {
+    BaseType_t ok = job->psram_stack ? xTaskCreatePinnedToCoreWithCaps(clip_task, "clip", 28672, job, 4, NULL, DECODER_CORE, MALLOC_CAP_SPIRAM)
+                                     : xTaskCreatePinnedToCore(clip_task, "clip", 28672, job, 4, NULL, DECODER_CORE);
+    if (ok != pdPASS) {
         media_abort_slot(slot);
         media_finish_slot(slot);
+        free(job->mem);
         free(job);
         return false;
     }
@@ -315,12 +352,13 @@ bool clip_play_memory(uint8_t *data, size_t len, bool is_wav, const char *label,
     job->mem_len = len;
     job->is_wav = is_wav;
     job->slot = slot;
+    job->psram_stack = true;   // plays from memory, never reads flash
     if (!media_begin_slot(slot, MEDIA_CLIP, label)) {
         free(data);
         free(job);
         return false;
     }
-    if (xTaskCreate(clip_task, "clip", 28672, job, 4, NULL) != pdPASS) {
+    if (xTaskCreatePinnedToCoreWithCaps(clip_task, "clip", 28672, job, 4, NULL, DECODER_CORE, MALLOC_CAP_SPIRAM) != pdPASS) {
         media_abort_slot(slot);
         media_finish_slot(slot);
         free(data);

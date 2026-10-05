@@ -83,6 +83,16 @@ void media_set_slot_gain_db(int slot, float db)
     s_slot_gain[slot] = powf(10.0f, db / 20.0f);
 }
 
+// Timing probes (microseconds per 256-frame block), read and cleared by tone_diag(); a block must be done well inside 5333 us.
+static volatile uint32_t s_dg_read_max, s_dg_mix_max, s_dg_eq_max, s_dg_total_max, s_dg_late, s_dg_blocks;
+
+void tone_diag(tone_diag_t *d)
+{
+    d->read_max_us = s_dg_read_max; d->mix_max_us = s_dg_mix_max; d->eq_max_us = s_dg_eq_max;
+    d->total_max_us = s_dg_total_max; d->late_blocks = s_dg_late; d->blocks = s_dg_blocks;
+    s_dg_read_max = s_dg_mix_max = s_dg_eq_max = s_dg_total_max = s_dg_late = s_dg_blocks = 0;
+}
+
 static void audio_task(void *arg)
 {
     static int16_t buf[FRAMES * 2];
@@ -98,6 +108,7 @@ static void audio_task(void *arg)
     int idle_blocks = 0;  // consecutive silent blocks (256 frames each, about 5.3 ms)
 
     while (true) {
+        int64_t t_start = esp_timer_get_time();
         tone_state_t s = s_state;
         if (s.enabled && esp_timer_get_time() > s_deadline_us) {
             s_state.enabled = false;  // nobody refreshed the dead-man timer: stop
@@ -120,6 +131,7 @@ static void audio_task(void *arg)
         // The OSC synthesizer renders into these buffers; it reports whether anything is sounding.
         static float synth_l[FRAMES], synth_r[FRAMES];
         bool synth_on = synth_render(synth_l, synth_r, FRAMES);
+        int64_t t_read = esp_timer_get_time();
         float tone_target = (s.enabled && !media_active_slot(SLOT_MAIN)) ? powf(10.0f, s.level_dbfs / 20.0f) : 0.0f;
         float mix_scale = active_slots > 1 ? 0.75f : 1.0f;  // headroom when two channels play together
         uint32_t inc = (uint32_t)(s.freq_hz / SAMPLE_RATE * 4294967296.0f);
@@ -183,9 +195,20 @@ static void audio_task(void *arg)
             buf[2 * n] = (int16_t)l;
             buf[2 * n + 1] = (int16_t)r;
         }
+        int64_t t_mix = esp_timer_get_time();
         eq_process(buf, FRAMES);  // speaker EQ for every source
+        int64_t t_eq = esp_timer_get_time();
         size_t written;
         i2s_channel_write(s_tx, buf, sizeof buf, &written, portMAX_DELAY);
+        {
+            uint32_t rd = (uint32_t)(t_read - t_start), mx = (uint32_t)(t_mix - t_read), eqt = (uint32_t)(t_eq - t_mix), tot = (uint32_t)(t_eq - t_start);
+            if (rd > s_dg_read_max) s_dg_read_max = rd;
+            if (mx > s_dg_mix_max) s_dg_mix_max = mx;
+            if (eqt > s_dg_eq_max) s_dg_eq_max = eqt;
+            if (tot > s_dg_total_max) s_dg_total_max = tot;
+            if (tot > 4000) s_dg_late++;
+            s_dg_blocks++;
+        }
     }
 }
 

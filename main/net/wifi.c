@@ -247,7 +247,7 @@ static void driver_stop(void)
 void wifi_client_init(void)
 {
     load_settings();
-    if (s_enabled && s_known_n > 0 && !driver_start()) ESP_LOGW(TAG, "could not start");
+    if (s_enabled && !driver_start()) ESP_LOGW(TAG, "could not start");
 }
 
 // ---- web ------------------------------------------------------------------------------------------------------------
@@ -326,7 +326,6 @@ static esp_err_t post_handler(httpd_req_t *req)
     char q[16], v[8];
     if (httpd_req_get_url_query_str(req, q, sizeof q) == ESP_OK && httpd_query_key_value(q, "on", v, sizeof v) == ESP_OK) {
         bool on = atoi(v) != 0;
-        if (on && s_known_n == 0) return bad(req, "409 Conflict", "add a network first\n");
         s_enabled = on;
         save_settings();
         if (on) { if (!driver_start()) return bad(req, "500 Internal Server Error", "Wi-Fi could not start (not enough memory?)\n"); }

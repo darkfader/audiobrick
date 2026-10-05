@@ -191,10 +191,24 @@ static esp_err_t volume_handler(httpd_req_t *req)
     return httpd_resp_sendstr(req, out);
 }
 
+// GET /diag/audio (login): worst-case time of the audio mixer's 256-frame blocks (budget 5333 us) since the last request, then cleared.
+static esp_err_t diag_audio_get(httpd_req_t *req)
+{
+    if (!web_authorized(req)) return web_deny(req);
+    tone_diag_t d;
+    tone_diag(&d);
+    char out[200];
+    snprintf(out, sizeof out, "{\"blocks\":%u,\"late_over_4ms\":%u,\"read_max_us\":%u,\"mix_max_us\":%u,\"eq_max_us\":%u,\"total_max_us\":%u}\n",
+             (unsigned)d.blocks, (unsigned)d.late_blocks, (unsigned)d.read_max_us, (unsigned)d.mix_max_us, (unsigned)d.eq_max_us, (unsigned)d.total_max_us);
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, out);
+}
+
 void ota_http_register_more(httpd_handle_t server)
 {
     const httpd_uri_t uris[] = {
         { .uri = "/media/stop",   .method = HTTP_POST, .handler = stop_handler },
+        { .uri = "/diag/audio",   .method = HTTP_GET,  .handler = diag_audio_get },
         { .uri = "/volume",       .method = HTTP_POST, .handler = volume_handler },
         { .uri = "/latency",      .method = HTTP_GET,  .handler = latency_get },
         { .uri = "/latency",      .method = HTTP_POST, .handler = latency_post },

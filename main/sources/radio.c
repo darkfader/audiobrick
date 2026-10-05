@@ -12,6 +12,8 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/idf_additions.h"
+#include "esp_heap_caps.h"
 #include "media.h"
 #include "nvs.h"
 #include "ota_http.h"
@@ -19,6 +21,17 @@
 
 #define MINIMP3_ONLY_MP3
 #include "minimp3.h"
+
+// Core 0 belongs to the Wi-Fi and Bluetooth stacks, which starve a decoder that lands there (the clip then stutters, measured with Wi-Fi on).
+// Core 1 only runs the audio mixer.
+#define DECODER_CORE 1
+
+// Decoder work buffers are big (about 28 KB per decoder) and internal RAM is scarce: take them from PSRAM, fall back to internal RAM if that fails.
+static void *work_alloc(size_t n)
+{
+    void *p = heap_caps_calloc(1, n, MALLOC_CAP_SPIRAM);
+    return p ? p : calloc(1, n);
+}
 
 static const char *TAG = "radio";
 
@@ -120,9 +133,9 @@ static result_t play_once(rctx_t *ctx, bool *got_audio)
     }
     esp_http_client_set_header(client, "Icy-MetaData", "0");  // no in-band song titles, they would sound like noise
     result_t result = RESULT_RETRY;
-    mp3dec_t *dec = calloc(1, sizeof *dec);
-    uint8_t *in = malloc(IN_BUF);
-    int16_t *pcm = malloc(MINIMP3_MAX_SAMPLES_PER_FRAME * sizeof(int16_t));
+    mp3dec_t *dec = work_alloc(sizeof *dec);
+    uint8_t *in = work_alloc(IN_BUF);
+    int16_t *pcm = work_alloc(MINIMP3_MAX_SAMPLES_PER_FRAME * sizeof(int16_t));
     if (!dec || !in || !pcm) {
         snprintf(s_status, sizeof s_status, "out of memory");
         goto done;
@@ -217,7 +230,7 @@ static void radio_task(void *arg)
     free(ctx);
     s_running = false;
     media_finish();
-    vTaskDelete(NULL);
+    vTaskDeleteWithCaps(NULL);
 }
 
 bool radio_play(const char *url, const char *name)
@@ -234,7 +247,7 @@ bool radio_play(const char *url, const char *name)
     strlcpy(s_name, name, sizeof s_name);
     snprintf(s_status, sizeof s_status, "connecting");
     s_running = true;
-    if (xTaskCreate(radio_task, "radio", 28672, NULL, 4, NULL) != pdPASS) {
+    if (xTaskCreatePinnedToCoreWithCaps(radio_task, "radio", 28672, NULL, 4, NULL, DECODER_CORE, MALLOC_CAP_SPIRAM) != pdPASS) {
         s_running = false;
         media_abort();
         media_finish();
