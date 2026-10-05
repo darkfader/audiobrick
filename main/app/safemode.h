@@ -4,7 +4,14 @@
 // still come up and a bad setting can be fixed, instead of the board restarting forever.
 #pragma once
 #include <stdbool.h>
+#include "sdkconfig.h"
 
+#if CONFIG_AB_FEATURE_SAFEMODE
 void safemode_boot(void);       // call once at start, after nvs_flash_init
 bool safemode_active(void);
 void safemode_healthy(void);    // call periodically; clears the counter after 30 s of uptime
+#else   // switched off: never in safe mode
+static inline void safemode_boot(void) {}
+static inline bool safemode_active(void) { return false; }
+static inline void safemode_healthy(void) {}
+#endif

@@ -72,6 +72,18 @@ typedef struct { uint16_t hiz_s, off_s; } power_cfg_t;
 static i2c_master_bus_handle_t s_bus;
 static i2c_master_dev_handle_t s_dev;
 static int s_vol_db = DAC_DEFAULT_VOLUME_DB;
+static esp_timer_handle_t s_vol_save_timer;
+static bool s_vol_persist;   // true once the saved volume has been loaded: from then on changes are saved (after 3 s of calm)
+
+static void vol_save_cb(void *arg)
+{
+    nvs_handle_t h;
+    if (nvs_open("audiobrick", NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_i8(h, "vol_db", (int8_t)s_vol_db);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
 static amp_state_t s_state = AMP_ACTIVE;
 static bool s_muted = true;
 static int64_t s_muted_since_us;
@@ -111,6 +123,7 @@ static bool chip_power_up(void)
     return dac_set_volume_db(s_vol_db);  // applies the profile's volume cap
 }
 
+#if CONFIG_AB_FEATURE_POWERSAVE  // AB_GATE_POWER
 static void power_load(void)
 {
     nvs_handle_t h;
@@ -142,10 +155,14 @@ static void power_tick(void *arg)
     xSemaphoreGive(s_lock);
 }
 
+#endif
+
 bool dac_init(void)
 {
     s_lock = xSemaphoreCreateMutex();
+#if CONFIG_AB_FEATURE_POWERSAVE
     power_load();
+#endif
     gpio_config_t pwdn = {
         .pin_bit_mask = 1ULL << PIN_DAC_PWDN,
         .mode = GPIO_MODE_OUTPUT,
@@ -189,11 +206,24 @@ bool dac_init(void)
         return false;
     }
 
-    s_vol_db = DAC_DEFAULT_VOLUME_DB;
+    s_vol_db = DAC_DEFAULT_VOLUME_DB;   // a first start is gentle; after that the last volume comes back (still capped by the speaker profile)
+    {
+        nvs_handle_t h;
+        int8_t saved;
+        if (nvs_open("audiobrick", NVS_READONLY, &h) == ESP_OK) {
+            if (nvs_get_i8(h, "vol_db", &saved) == ESP_OK && saved >= -90 && saved <= 0) s_vol_db = saved;
+            nvs_close(h);
+        }
+        const esp_timer_create_args_t va = { .callback = vol_save_cb, .name = "vol_save" };
+        esp_timer_create(&va, &s_vol_save_timer);
+    }
     if (!chip_power_up()) return false;
+    s_vol_persist = true;
+#if CONFIG_AB_FEATURE_POWERSAVE
     const esp_timer_create_args_t targs = { .callback = power_tick, .name = "amp_power" };
     esp_timer_handle_t timer;
     if (esp_timer_create(&targs, &timer) == ESP_OK) esp_timer_start_periodic(timer, 500000);
+#endif
     ESP_LOGI(TAG, "TAS5825M ready: BTL, %d dB (cap %d dB), muted; Hi-Z after %d s, off after %d s (0 = never)",
              s_vol_db, limits_max_volume_db(), s_cfg.hiz_s, s_cfg.off_s);
     return true;
@@ -229,6 +259,7 @@ bool dac_set_mute(bool mute)
 
 amp_state_t dac_state(void) { return s_state; }
 
+#if CONFIG_AB_FEATURE_POWERSAVE
 bool dac_power_set(int hiz_s, int off_s)
 {
     if (hiz_s < 0 || hiz_s > 3600 || off_s < 0 || off_s > 86400) return false;
@@ -248,6 +279,11 @@ void dac_power_get(int *hiz_s, int *off_s)
     *off_s = s_cfg.off_s;
 }
 
+#else   // power saving switched off: the amp stays awake
+bool dac_power_set(int hiz_s, int off_s) { (void)hiz_s; (void)off_s; return false; }
+void dac_power_get(int *hiz_s, int *off_s) { *hiz_s = 0; *off_s = 0; }
+#endif
+
 bool dac_set_volume_db(int db)
 {
     // The speaker profile caps the volume so even a 0 dBFS signal stays under the SPL limit.
@@ -255,6 +291,10 @@ bool dac_set_volume_db(int db)
     if (db > cap) db = cap;
     if (db < -90) db = -90;
     s_vol_db = db;
+    if (s_vol_persist && s_vol_save_timer) {   // remember it across restarts, written once the changes stop
+        esp_timer_stop(s_vol_save_timer);
+        esp_timer_start_once(s_vol_save_timer, 3000000);
+    }
     return write_reg(REG_DIG_VOL, (uint8_t)(0x30 + (-db) * 2)) || s_state == AMP_OFF;
 }
 
@@ -284,6 +324,7 @@ bool dac_clear_faults(void)
 bool dac_fault_active(void)   { return s_state != AMP_OFF && gpio_get_level(PIN_DAC_FAULT) == 0; }
 bool dac_warning_active(void) { return s_state != AMP_OFF && gpio_get_level(PIN_DAC_WARN) == 0; }
 
+#if CONFIG_AB_FEATURE_POWERSAVE
 // ---- HTTP ------------------------------------------------------------------------------------------
 //   GET  /power    {"state","muted","hiz_after_s","off_after_s","wakes_from_hiz","wakes_from_off"} (no login)
 //   POST /power    body "hiz_after_s=20" and "off_after_s=600" lines, seconds, 0 = never (login)
@@ -344,3 +385,6 @@ void dac_http_register(httpd_handle_t server)
     };
     for (size_t i = 0; i < sizeof uris / sizeof uris[0]; i++) httpd_register_uri_handler(server, &uris[i]);
 }
+#else
+void dac_http_register(httpd_handle_t server) { (void)server; }
+#endif

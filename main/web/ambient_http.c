@@ -22,6 +22,7 @@
 #include "player.h"
 #include "radio.h"
 #include "synth.h"
+#include "wifi.h"
 
 #if CONFIG_AB_FEATURE_AMBIENT
 static esp_err_t ambient_get_handler(httpd_req_t *req)
@@ -105,6 +106,7 @@ static esp_err_t ambient_enable_handler(httpd_req_t *req)
 }
 #endif  // CONFIG_AB_FEATURE_AMBIENT
 
+#if CONFIG_AB_FEATURE_CLIPS  // AB_GATE_PLAYER: the transport endpoints
 static const char *state_name(player_state_t s)
 {
     return s == PLAYER_PLAYING ? "playing" : (s == PLAYER_PAUSED ? "paused" : "idle");
@@ -150,14 +152,18 @@ static esp_err_t autonext_h(httpd_req_t *req)
     return player_get_handler(req);
 }
 
+#endif  // CONFIG_AB_FEATURE_CLIPS
+
 void ambient_http_register(httpd_handle_t server)
 {
+#if CONFIG_AB_FEATURE_AMBIENT || CONFIG_AB_FEATURE_CLIPS
     const httpd_uri_t uris[] = {
 #if CONFIG_AB_FEATURE_AMBIENT
         { .uri = "/ambient",        .method = HTTP_GET,  .handler = ambient_get_handler },
         { .uri = "/ambient",        .method = HTTP_POST, .handler = ambient_post_handler },
         { .uri = "/ambient/enable", .method = HTTP_POST, .handler = ambient_enable_handler },
 #endif
+#if CONFIG_AB_FEATURE_CLIPS
         { .uri = "/player",         .method = HTTP_GET,  .handler = player_get_handler },
         { .uri = "/player/play",    .method = HTTP_POST, .handler = play_h },
         { .uri = "/player/pause",   .method = HTTP_POST, .handler = pause_h },
@@ -166,11 +172,18 @@ void ambient_http_register(httpd_handle_t server)
         { .uri = "/player/prev",    .method = HTTP_POST, .handler = prev_h },
         { .uri = "/player/stop",    .method = HTTP_POST, .handler = stop_h },
         { .uri = "/player/autonext", .method = HTTP_POST, .handler = autonext_h },
+#endif
     };
+#endif
+#if CONFIG_AB_FEATURE_AMBIENT || CONFIG_AB_FEATURE_CLIPS
     for (size_t i = 0; i < sizeof uris / sizeof uris[0]; i++) httpd_register_uri_handler(server, &uris[i]);
+#endif
     dac_http_register(server);
 #if CONFIG_AB_FEATURE_BLUETOOTH
     bluetooth_http_register(server);
+#endif
+#if CONFIG_AB_FEATURE_WIFI
+    wifi_client_http_register(server);
 #endif
 #if CONFIG_AB_FEATURE_VBAN || CONFIG_AB_FEATURE_SCREAM
     netaudio_http_register(server);

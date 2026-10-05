@@ -1,3 +1,4 @@
+#include "sdkconfig.h"
 #include "clip.h"
 
 #include <stdio.h>
@@ -14,6 +15,9 @@
 #define MINIMP3_IMPLEMENTATION
 #define MINIMP3_ONLY_MP3
 #include "minimp3.h"
+
+#if CONFIG_AB_FEATURE_CLIPS  // AB_GATE: the whole file is only built when this feature is switched on
+
 
 static const char *TAG = "clip";
 
@@ -330,3 +334,5 @@ bool clip_play(const char *name, bool loop)
 {
     return clip_play_slot(name, loop, SLOT_MAIN);
 }
+
+#endif  // CONFIG_AB_FEATURE_CLIPS

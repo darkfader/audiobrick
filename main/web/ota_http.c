@@ -300,7 +300,7 @@ static esp_err_t status_handler(httpd_req_t *req)
     media_kind_t mk = media_kind();
     size_t st_total = 0, st_free = 0;
     storage_info(&st_total, &st_free);
-    char json[2300];
+    char json[2600];
     snprintf(json, sizeof json,
              "{\"version\":\"%s\",\"built\":\"%s %s\",\"partition\":\"%s\",\"uptime_s\":%lld,\"ip\":\"%s\","
              "\"boot\":{\"reason\":\"%s\",\"abnormal\":%s,\"count\":%u,\"crashes\":%u},\"time\":\"%s\",\"time_synced\":%s,\"pvdd_v\":%.2f,\"fault\":%s,\"warning\":%s,"
@@ -314,7 +314,7 @@ static esp_err_t status_handler(httpd_req_t *req)
              "\"player\":{\"state\":\"%s\",\"clip\":\"%s\",\"index\":%d,\"count\":%d},"
              "\"ambient\":{\"on\":%s,\"running\":%s,\"bg\":\"%s\",\"event\":\"%s\"},"
              "\"heap\":{\"free\":%u,\"largest\":%u,\"min\":%u},"
-             "\"features\":{\"eq\":%s,\"ambient\":%s,\"vban\":%s,\"scream\":%s,\"radio\":%s,\"synth\":%s,\"bluetooth\":%s}}\n",
+             "\"features\":{\"eq\":%s,\"ambient\":%s,\"vban\":%s,\"scream\":%s,\"radio\":%s,\"synth\":%s,\"bluetooth\":%s,\"clips\":%s,\"announce\":%s,\"tcpstream\":%s,\"powersave\":%s,\"sntp\":%s,\"safemode\":%s,\"bootinfo\":%s,\"mdns\":%s,\"wifi\":%s}}\n",
              app->version, app->date, app->time, part ? part->label : "?",
              (long long)(esp_timer_get_time() / 1000000), net_ip_str(), bootinfo_reason(), bootinfo_abnormal() ? "true" : "false", (unsigned)bootinfo_count(), (unsigned)bootinfo_crashes(), clock_str, clock_ok ? "true" : "false", pvdd,
              dac_fault_active() ? "true" : "false", dac_warning_active() ? "true" : "false",
@@ -333,7 +333,9 @@ static esp_err_t status_handler(httpd_req_t *req)
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
              FEAT(AB_HAS_EQ), FEAT(AB_HAS_AMBIENT), FEAT(AB_HAS_VBAN), FEAT(AB_HAS_SCREAM),
-             FEAT(AB_HAS_RADIO), FEAT(AB_HAS_SYNTH), FEAT(AB_HAS_BLUETOOTH));
+             FEAT(AB_HAS_RADIO), FEAT(AB_HAS_SYNTH), FEAT(AB_HAS_BLUETOOTH),
+             FEAT(AB_HAS_CLIPS), FEAT(AB_HAS_ANNOUNCE), FEAT(AB_HAS_TCPSTREAM), FEAT(AB_HAS_POWERSAVE), FEAT(AB_HAS_SNTP),
+             FEAT(AB_HAS_SAFEMODE), FEAT(AB_HAS_BOOTINFO), FEAT(AB_HAS_MDNS), FEAT(AB_HAS_WIFI));
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, json);
 }
@@ -498,7 +500,7 @@ bool ota_http_start(void)
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.stack_size = 8192;
     cfg.recv_wait_timeout = 20;
-    cfg.max_uri_handlers = 56;
+    cfg.max_uri_handlers = 64;
     cfg.max_open_sockets = 8;  // the lwIP pool is 16: web server 8 + 2 internal, the stream port and its client
     cfg.lru_purge_enable = true;
     httpd_handle_t server;

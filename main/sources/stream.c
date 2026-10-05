@@ -1,3 +1,4 @@
+#include "sdkconfig.h"
 #include "stream.h"
 
 #include <errno.h>
@@ -10,6 +11,9 @@
 #include "lwip/sockets.h"
 #include "media.h"
 #include "ota_http.h"
+
+#if CONFIG_AB_FEATURE_TCPSTREAM  // AB_GATE: the whole file is only built when this feature is switched on
+
 
 static const char *TAG = "stream";
 
@@ -144,3 +148,5 @@ bool stream_start(void)
 {
     return xTaskCreate(stream_task, "stream", 6144, NULL, 4, NULL) == pdPASS;
 }
+
+#endif  // CONFIG_AB_FEATURE_TCPSTREAM

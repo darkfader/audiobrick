@@ -6,7 +6,12 @@
 // Samples are signed 16-bit little-endian, interleaved. The board answers "OK\n" or an error line.
 #pragma once
 #include <stdbool.h>
+#include "sdkconfig.h"
 
 #define STREAM_PORT 4010
 
+#if CONFIG_AB_FEATURE_TCPSTREAM
 bool stream_start(void);
+#else
+static inline bool stream_start(void) { return true; }
+#endif

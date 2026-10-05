@@ -2,7 +2,7 @@
 
 Findings from the firmware in this repository (v1.1.0), tested on a real Esparagus Audio Brick (ESP32, rev unknown, C1-like) with
 two 6 ohm speakers and a USB microphone. Written so that others using the TAS5825M, or this board, can reuse them.
-Code: `main/dac.c`. Tests: `tools/amp_power_test.py`, `tools/wake_test.py`.
+Code: `main/audio/dac.c`. Tests: `tools/amp_power_test.py`, `tools/wake_test.py`.
 
 ## The three idle states
 

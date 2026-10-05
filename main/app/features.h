@@ -39,8 +39,48 @@
 #else
 #define AB_HAS_MDNS 0
 #endif
+#ifdef CONFIG_AB_FEATURE_WIFI
+#define AB_HAS_WIFI 1
+#else
+#define AB_HAS_WIFI 0
+#endif
 #ifdef CONFIG_AB_FEATURE_BLUETOOTH
 #define AB_HAS_BLUETOOTH 1
 #else
 #define AB_HAS_BLUETOOTH 0
+#endif
+#ifdef CONFIG_AB_FEATURE_CLIPS
+#define AB_HAS_CLIPS 1
+#else
+#define AB_HAS_CLIPS 0
+#endif
+#ifdef CONFIG_AB_FEATURE_ANNOUNCE
+#define AB_HAS_ANNOUNCE 1
+#else
+#define AB_HAS_ANNOUNCE 0
+#endif
+#ifdef CONFIG_AB_FEATURE_TCPSTREAM
+#define AB_HAS_TCPSTREAM 1
+#else
+#define AB_HAS_TCPSTREAM 0
+#endif
+#ifdef CONFIG_AB_FEATURE_POWERSAVE
+#define AB_HAS_POWERSAVE 1
+#else
+#define AB_HAS_POWERSAVE 0
+#endif
+#ifdef CONFIG_AB_FEATURE_SNTP
+#define AB_HAS_SNTP 1
+#else
+#define AB_HAS_SNTP 0
+#endif
+#ifdef CONFIG_AB_FEATURE_SAFEMODE
+#define AB_HAS_SAFEMODE 1
+#else
+#define AB_HAS_SAFEMODE 0
+#endif
+#ifdef CONFIG_AB_FEATURE_BOOTINFO
+#define AB_HAS_BOOTINFO 1
+#else
+#define AB_HAS_BOOTINFO 0
 #endif

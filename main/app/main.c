@@ -14,6 +14,7 @@ void playback_settings_load(void);
 #include "ambient.h"
 #include "bluetooth.h"
 #include "net.h"
+#include "wifi.h"
 #include "netaudio.h"
 #include "player.h"
 #include "radio.h"
@@ -71,6 +72,7 @@ void app_main(void)
     if (!net_start() || !ota_http_start() || !stream_start()) {
         ESP_LOGE(TAG, "network init failed");
     }
+    wifi_client_init();  // after net_start (needs the event loop); stays off until a network has been added
 
     bool marked_valid = false;
     int online_ticks = 0;

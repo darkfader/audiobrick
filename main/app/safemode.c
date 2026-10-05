@@ -1,8 +1,12 @@
+#include "sdkconfig.h"
 #include "safemode.h"
 
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "nvs.h"
+
+#if CONFIG_AB_FEATURE_SAFEMODE  // AB_GATE: the whole file is only built when this feature is switched on
+
 
 static const char *TAG = "safemode";
 static bool s_safe;
@@ -39,3 +43,5 @@ void safemode_healthy(void)
     s_cleared = true;
     if (s_safe) ESP_LOGW(TAG, "stayed up for 30 s; the next boot will be normal again");
 }
+
+#endif  // CONFIG_AB_FEATURE_SAFEMODE

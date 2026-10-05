@@ -66,8 +66,8 @@ a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:
       <div class="stat"><b id="sPvdd">–</b><span>supply (PVDD, V)</span></div>
       <div class="stat"><b id="sVol">–</b><span>amp volume (dB)</span></div>
       <div class="stat"><b id="sUp">–</b><span>uptime</span></div>
-      <div class="stat"><b id="sRst" title="">–</b><span id="sRstLbl">last restart</span></div>
-      <div class="stat"><b id="sTime">–</b><span id="sTimeLbl">time (network)</span></div>
+      <div class="stat" data-feature="bootinfo"><b id="sRst" title="">–</b><span id="sRstLbl">last restart</span></div>
+      <div class="stat" data-feature="sntp"><b id="sTime">–</b><span id="sTimeLbl">time (network)</span></div>
       <div class="stat"><b id="sIp">–</b><span>address</span></div>
     </div>
     <div style="margin-top:12px">
@@ -94,6 +94,7 @@ a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:
   <div class="card" id="playCard">
     <h2>Playback: stream and clips</h2>
     <div class="row" style="align-items:center"><span id="mstate" class="mut">Idle</span><button class="danger auth hide" id="mstop">Stop</button></div>
+    <div data-feature="clips">
     <div class="row auth hide" style="align-items:center;gap:8px">
       <button class="pbtn" id="tPrev" title="Previous">⏮</button>
       <button class="pbtn" id="tPlay" title="Play">▶</button>
@@ -102,17 +103,20 @@ a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:
       <span class="mut small" id="tNow" style="flex:1 1 200px"></span>
       <label style="flex:0 0 auto;flex-direction:row;align-items:center;gap:6px;color:var(--fg);font-size:13px"><input type="checkbox" id="tAuto" style="width:auto"> play next automatically</label>
     </div>
+    </div>
     <div class="row auth hide"><label><span>Volume: <b id="mvolV">-45</b> dB (amp; capped at <span id="mvolCap">–</span> dB by the speaker profile)</span>
       <input type="range" id="mvol" min="-70" max="-31" step="1" value="-45"></label></div>
     <div class="mut small">Same safe steps as the tone slider: each step up is limited to 2 dB and Page Up/Down, Home and End are disabled.</div>
 
+    <div data-feature="tcpstream">
     <h2 style="margin-top:16px">Network stream</h2>
     <div class="small mut">The board listens on TCP port 4010. From a PC run
       <code>python tools/stream.py 192.168.2.40 song.mp3</code>, or add <code>--device "CABLE Output (VB-Audio Virtual Cable)"</code> to send system audio.
       The password is asked on the command line.</div>
+    </div>
   </div>
 
-  <div class="card" id="clipCard">
+  <div class="card" id="clipCard" data-feature="clips">
     <h2>Clip manager</h2>
     <div class="meter"><i id="spBar" style="width:0"></i></div>
     <div class="mut small" id="clipSpace" style="margin:4px 0 8px"></div>
@@ -242,13 +246,30 @@ a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:
       <div class="mut small" id="pderived"></div>
     </div>
 
-    <div class="card">
+    <div class="card" data-feature="announce">
       <h2>Clips and announcements over a stream</h2>
       <div class="mut small" style="margin-bottom:8px">When a clip or an announcement (POST /announce, for example a Home Assistant text-to-speech message) plays while a stream is running, the stream is lowered by this much and comes back afterwards. 0 = do not lower it.</div>
       <div class="row" style="align-items:center">
         <label>Lower the stream by (dB)<input type="number" id="duckDb" min="0" max="30" step="1" style="width:7em"></label>
         <button class="primary" id="duckSave">Save</button>
       </div>
+    </div>
+
+    <div class="card" data-feature="wifi">
+      <h2>Wi-Fi</h2>
+      <div class="mut small" style="margin-bottom:8px">A second connection next to the Ethernet cable (the cable is used first). The Brick remembers up to 8 networks and joins the strongest one it can hear. Wi-Fi stays off until you add a network.</div>
+      <div class="row" style="align-items:center">
+        <label style="flex:0 0 auto;flex-direction:row;align-items:center;gap:8px;color:var(--fg);font-size:14px"><input type="checkbox" id="wfOn" style="width:auto"> Wi-Fi on</label>
+        <button id="wfScan">Scan for networks</button>
+      </div>
+      <div id="wfSeen" class="small" style="margin-top:8px"></div>
+      <div class="row" style="align-items:flex-end;margin-top:8px">
+        <label>Network name<input type="text" id="wfSsid" maxlength="32" autocomplete="off"></label>
+        <label>Password (empty = open network)<input type="password" id="wfPass" maxlength="63" autocomplete="new-password"></label>
+        <button class="primary" id="wfAdd">Remember and join</button>
+      </div>
+      <div id="wfKnown" class="small" style="margin-top:8px"></div>
+      <div class="mut small" style="margin-top:8px" id="wfState">â€“</div>
     </div>
 
     <div class="card" data-feature="bluetooth">
@@ -268,6 +289,7 @@ a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:
       <div class="row" style="align-items:center;margin-top:8px">
         <button id="btPair">Pair a new device (2 min)</button>
         <button id="btConnect">Connect to last device</button>
+        <button id="btDisc">Disconnect</button>
         <button id="btForget" class="danger">Forget all paired devices</button>
       </div>
       <div class="mut small" style="margin-top:8px" id="btState">–</div>
@@ -287,7 +309,7 @@ a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" data-feature="powersave">
       <h2>Amp power saving</h2>
       <div class="mut small" style="margin-bottom:8px">When nothing has played for a while the amp output goes Hi-Z, and later the amp chip powers down completely. Any sound wakes it again with no audible delay. 0 = never.</div>
       <div class="row">
@@ -334,8 +356,8 @@ function setLogin(v){
   $('logout').classList.toggle('hide',!v);
   $('clearFaults').classList.toggle('hide',!v);
   document.querySelectorAll('.auth').forEach(e=>e.classList.toggle('hide',!v));
-  loadClips();
-  if(v){loadProfile();loadPower();loadLatency();loadDuck();featuresReady.then(()=>{if(F.bluetooth)loadBt(true)});featuresReady.then(()=>{if(F.eq)loadEq();if(F.ambient)loadAmb();if(F.net)loadNet(true);if(F.radio)loadRadio(true);if(F.synth)loadSynth(true)})}
+  featuresReady.then(()=>{if(F.clips)loadClips()});
+  if(v){loadProfile();loadLatency();featuresReady.then(()=>{if(F.powersave)loadPower();if(F.announce)loadDuck();if(F.bluetooth)loadBt(true);if(F.wifi)loadWifi()});featuresReady.then(()=>{if(F.eq)loadEq();if(F.ambient)loadAmb();if(F.net)loadNet(true);if(F.radio)loadRadio(true);if(F.synth)loadSynth(true)})}
 }
 async function checkSession(){
   try{const s=await (await fetch('/session',{credentials:'same-origin'})).json();setLogin(!!s.logged_in)}catch(e){}
@@ -355,6 +377,30 @@ async function loadBt(fill){
     t+=' Paired devices: '+b.bonded.length+'.';
     $('btState').textContent=t;$('btPair').textContent=b.pairing?'Close pairing window':'Pair a new device (2 min)';
   }catch(e){}
+}
+async function loadWifi(){
+  try{const r=await fetch('/wifi',{credentials:'same-origin'});if(!r.ok)return;const w=await r.json();
+    $('wfOn').checked=w.enabled;
+    $('wfState').textContent=!w.enabled?'Off.':!w.running?'Starting…':w.connected?('Connected to "'+w.ssid+'" · '+w.ip+' · '+w.rssi+' dBm'):'Looking for a remembered network…';
+    const k=$('wfKnown');k.textContent='';
+    if(w.known.length){const h=document.createElement('div');h.className='mut';h.textContent='Remembered networks:';k.appendChild(h)}
+    w.known.forEach(n=>{const d=document.createElement('div');d.className='row';d.style.cssText='align-items:center;gap:8px;margin-top:4px';
+      const t=document.createElement('span');t.style.flex='1';t.textContent=n.ssid+(n.connected?'  (connected)':'');d.appendChild(t);
+      const c=document.createElement('button');c.textContent='Join';c.onclick=async()=>{if(await call('/wifi/connect',{body:n.ssid})){say('Joining…');setTimeout(loadWifi,3000)}};d.appendChild(c);
+      const f=document.createElement('button');f.textContent='Forget';f.className='danger';f.onclick=async()=>{if(!confirm('Forget "'+n.ssid+'"?'))return;if(await call('/wifi/forget',{body:n.ssid}))loadWifi()};d.appendChild(f);
+      k.appendChild(d)});
+  }catch(e){}
+}
+async function showWifiScan(){
+  for(let i=0;i<20;i++){
+    const r=await fetch('/wifi/scan',{credentials:'same-origin'});if(!r.ok)return;const s=await r.json();
+    if(s.scanning){await new Promise(x=>setTimeout(x,700));continue}
+    const el=$('wfSeen');el.textContent='';
+    if(!s.networks.length){el.textContent='No networks heard.';return}
+    s.networks.forEach(n=>{const b=document.createElement('button');b.style.cssText='margin:2px 6px 2px 0';
+      b.textContent=n.ssid+'  '+n.rssi+' dBm'+(n.secure?'':' (open)')+(n.known?' ✓':'');
+      b.onclick=()=>{$('wfSsid').value=n.ssid;$('wfPass').focus()};el.appendChild(b)});
+    return}
 }
 async function loadDuck(){
   try{$('duckDb').value=(await (await fetch('/duck')).json()).duck_db}catch(e){}
@@ -783,6 +829,12 @@ $('btPair').onclick=async()=>{
   if(await call('/bluetooth/pair?on='+(open?0:1)))loadBt(false)
 };
 $('btConnect').onclick=async()=>{if(await call('/bluetooth/connect')){say('Connecting\u2026');loadBt(false)}};
+$('wfOn').onchange=async()=>{await call('/wifi?on='+($('wfOn').checked?1:0));loadWifi()};
+$('wfScan').onclick=async()=>{if(await call('/wifi/scan')){$('wfSeen').textContent='Scanning…';showWifiScan()}};
+$('wfAdd').onclick=async()=>{const n=$('wfSsid').value.trim();if(!n){say('Enter the network name (or pick one from the scan).',true);return}
+  if(await call('/wifi/add',{body:n+'\n'+$('wfPass').value})){$('wfPass').value='';say('Network remembered. Joining…');setTimeout(loadWifi,4000)}};
+setInterval(()=>{if(loggedIn&&F.wifi)loadWifi()},5000);
+$('btDisc').onclick=async()=>{if(await call('/bluetooth/disconnect')){say('Disconnected');loadBt(false)}};
 $('btForget').onclick=async()=>{
   if(!confirm('Forget all paired Bluetooth devices? They will have to be paired again.'))return;
   if(await call('/bluetooth/forget')){say('Paired devices forgotten.');loadBt(false)}

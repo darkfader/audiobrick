@@ -23,6 +23,13 @@ void media_set_prebuffer_ms(uint32_t ms)
 }
 uint32_t media_prebuffer_ms(void) { return s_prebuf_frames / 48; }
 
+// Per-session minimum: a bursty source (Bluetooth) asks for more than the global setting, once, right after media_begin().
+static uint32_t s_min_prebuf_frames[MEDIA_SLOTS];
+void media_set_slot_min_prebuffer_ms(int slot, uint32_t ms)
+{
+    if (slot >= 0 && slot < MEDIA_SLOTS) s_min_prebuf_frames[slot] = ms > 600 ? 600 * 48 : ms * 48;
+}
+
 // Ring sizes are powers of two: the main slot holds about 1.4 s, the ambient slots about 0.7 s.
 static const uint32_t RING_BYTES[MEDIA_SLOTS] = { 256 * 1024, 128 * 1024, 128 * 1024 };
 
@@ -64,6 +71,7 @@ bool media_begin_slot(int slot, media_kind_t kind, const char *label)
         s->head = s->tail = 0;
         s->finished = s->abort = s->started = s->in_underrun = false;
         s->underruns = 0;
+        s_min_prebuf_frames[slot] = 0;
         strlcpy(s->label, label ? label : "", sizeof s->label);
         if (slot == SLOT_MAIN) media_set_paused(false);  // a new main session always starts playing
         s->kind = kind;
@@ -142,7 +150,8 @@ size_t media_read_slot(int slot, int16_t *out, size_t frames)
     }
     uint32_t used = __atomic_load_n(&s->head, __ATOMIC_ACQUIRE) - s->tail;
     if (!s->started) {
-        if (used >= s_prebuf_frames * FRAME_BYTES || (s->finished && used > 0)) {
+        uint32_t want_frames = s_prebuf_frames > s_min_prebuf_frames[slot] ? s_prebuf_frames : s_min_prebuf_frames[slot];
+        if (used >= want_frames * FRAME_BYTES || (s->finished && used > 0)) {
             s->started = true;
         } else {
             if (s->finished) s->kind = MEDIA_NONE;  // ended before anything was played

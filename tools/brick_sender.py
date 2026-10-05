@@ -5,7 +5,7 @@
   python  tools/brick_sender.py [host] --verbose  # with a console, prints what it does
 
 Windows apps play to ONE device ("Speakers (VB-Audio Virtual Cable)", the cable's playback side). This program records the
-cable's other end ("CABLE Output") and sends it to the Brick on TCP port 4010 (protocol in main/stream.h). It only holds a
+cable's other end ("CABLE Output") and sends it to the Brick on TCP port 4010 (protocol in main/sources/stream.h). It only holds a
 connection while there is sound: after SILENCE_S seconds of silence it disconnects, so the Brick's amp can mute, go Hi-Z and
 power down, and it reconnects as soon as sound starts (about 0.2 s of pre-buffering at the Brick). No ffmpeg needed.
 

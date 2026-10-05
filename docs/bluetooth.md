@@ -1,7 +1,7 @@
 # Bluetooth audio (A2DP sink) on the Audio Brick (ESP32 only)
 
 A phone or PC can play music on the Brick over classic Bluetooth. This works on the **ESP32** board only: the ESP32-S3 has no classic Bluetooth (only BLE),
-so the S3 version of the Audio Brick cannot do this. Code: `main/bluetooth.c`, page card "Bluetooth audio". Status of what has been tested: see the end.
+so the S3 version of the Audio Brick cannot do this. Code: `main/sources/bluetooth.c`, page card "Bluetooth audio". Status of what has been tested: see the end.
 
 ## Check the antenna first
 

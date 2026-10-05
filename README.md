@@ -22,7 +22,7 @@ This repository is an independent community project, not made or endorsed by Son
 - **Bluetooth audio** (ESP32 only): a phone can play music on the Brick through an explicit pairing window; see [docs/bluetooth.md](docs/bluetooth.md) (tested with one phone and with a Windows 11 PC, one device at a time; **the module needs an external antenna**).
 - **Announcements:** `POST /announce` plays an uploaded MP3/WAV (for example a Home Assistant text-to-speech message) over whatever is playing; the stream is lowered meanwhile (adjustable ducking). The page shows why the board last restarted.
 - **Adjustable streaming delay** (Low about 50 ms, the default; Normal about 170 ms; Safe about 400 ms buffer) and a network-synced clock (SNTP).
-- mDNS (`audiobrick.local`), safe mode after repeated crashes, rollback-protected OTA, build-time feature switches (`idf.py menuconfig`, "Audio Brick features").
+- mDNS (`audiobrick.local`), safe mode after repeated crashes, rollback-protected OTA, Wi-Fi client with remembered networks as a second interface. **Every optional component is a build-time switch** (`idf.py menuconfig`, "Audio Brick features"; the all-off build is 655 KB), see [docs/architecture.md](docs/architecture.md).
 
 ## Getting started
 
@@ -39,6 +39,7 @@ Recommended: **one** playback device, no extra windows: VB-Cable plus a hidden b
 
 ## Documentation
 
+- [docs/architecture.md](docs/architecture.md): **start here to read the code**: folders, audio path, threads, settings, how to add a source, the component switches.
 - [CLAUDE.md](CLAUDE.md): detailed project notes, pinout, measurements, lessons learned (written while building this; long).
 - [docs/bluetooth.md](docs/bluetooth.md): Bluetooth audio, pairing rules, antenna, test results and known problems.
 - [docs/connectors.md](docs/connectors.md): the board's connectors, free GPIOs and what they could be used for.
@@ -54,7 +55,7 @@ e-stim section in CLAUDE.md). Power the board from a current-limited supply and 
 ## Credits
 
 Hardware by Sonocotta. The TAS5825M power-up register sequence follows the one in [mrtoy-me/esphome-tas58xx](https://github.com/mrtoy-me/esphome-tas58xx)
-(via rmalchow/ondaire); the registers marked "vendor" in `main/dac.c` are copied as-is. MP3 decoding: [minimp3](https://github.com/lieff/minimp3) (CC0).
+(via rmalchow/ondaire); the registers marked "vendor" in `main/audio/dac.c` are copied as-is. MP3 decoding: [minimp3](https://github.com/lieff/minimp3) (CC0).
 Sound clips from Wikimedia Commons under their own licenses: [clips/ATTRIBUTION.md](clips/ATTRIBUTION.md).
 
 ## License

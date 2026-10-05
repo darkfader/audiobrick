@@ -18,6 +18,7 @@ bool media_init(void);
 // (20-600 ms, default 50). Lower = less delay but more risk of dropouts when the network hiccups.
 void media_set_prebuffer_ms(uint32_t ms);
 uint32_t media_prebuffer_ms(void);
+void media_set_slot_min_prebuffer_ms(int slot, uint32_t ms);   // this session only: wait for at least this much audio before playing
 
 // Producer side. media_begin_slot fails if the slot is busy or the test tone is on.
 bool media_begin_slot(int slot, media_kind_t kind, const char *label);

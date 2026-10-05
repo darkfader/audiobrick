@@ -1,9 +1,19 @@
-# Core only: mixer, test tone, clips and player, web page with login, OTA, safe mode. No optional feature.
-# Build:  idf.py -B build_min -D SDKCONFIG=build_min/sdkconfig -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.minimal" build
+# Core only: the audio engine, test tone, speaker-profile loudness limit, web page with login, firmware update over the network.
+# Every optional component is switched off. Build:
+#   idf.py -B build_min -D SDKCONFIG=build_min/sdkconfig -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.minimal" build
 CONFIG_AB_FEATURE_EQ=n
+CONFIG_AB_FEATURE_CLIPS=n
+CONFIG_AB_FEATURE_ANNOUNCE=n
 CONFIG_AB_FEATURE_AMBIENT=n
 CONFIG_AB_FEATURE_VBAN=n
 CONFIG_AB_FEATURE_SCREAM=n
 CONFIG_AB_FEATURE_RADIO=n
 CONFIG_AB_FEATURE_SYNTH=n
+CONFIG_AB_FEATURE_MDNS=n
+CONFIG_AB_FEATURE_TCPSTREAM=n
+CONFIG_AB_FEATURE_POWERSAVE=n
+CONFIG_AB_FEATURE_SNTP=n
+CONFIG_AB_FEATURE_SAFEMODE=n
+CONFIG_AB_FEATURE_BOOTINFO=n
+CONFIG_AB_FEATURE_WIFI=n
 # CONFIG_AB_FEATURE_BLUETOOTH is not set

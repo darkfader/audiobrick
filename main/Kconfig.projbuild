@@ -10,9 +10,25 @@ menu "Audio Brick features"
         help
             Parametric EQ applied to every source. Small.
 
+    config AB_FEATURE_CLIPS
+        bool "Stored clips and the player (MP3/WAV on the flash file system)"
+        default y
+        help
+            The clip manager on the web page, the transport buttons (play, pause, next, previous) and the FAT partition for the files.
+            The ambient scene and announcements need it (they use the same decoder).
+
+    config AB_FEATURE_ANNOUNCE
+        bool "Announcements (POST /announce) and ducking of a running stream"
+        default y
+        depends on AB_FEATURE_CLIPS
+        help
+            Plays an uploaded sound from memory over whatever is playing, for example a Home Assistant text-to-speech message,
+            and lowers the stream meanwhile.
+
     config AB_FEATURE_AMBIENT
         bool "Ambient scene (looping background plus random events)"
         default y
+        depends on AB_FEATURE_CLIPS
         help
             Uses the background and event mixer channels and a second MP3 decoder.
 
@@ -56,5 +72,42 @@ menu "Audio Brick features"
         help
             Lets a phone or PC play music on the Brick. Adds about 300 KB of code and, once switched on from the web page,
             roughly 60 KB of internal RAM (the stack lives in PSRAM where it can). Classic Bluetooth only exists on the ESP32, not the S3.
+
+    config AB_FEATURE_WIFI
+        bool "Wi-Fi client (second network interface)"
+        default y
+        help
+            Join a remembered Wi-Fi network as a second interface next to Ethernet (both use DHCP). Networks are scanned, added and
+            chosen on the web page. Wi-Fi stays off until a network is added. Needs about 300 KB of code and 40 KB of internal RAM while on.
+
+    config AB_FEATURE_TCPSTREAM
+        bool "TCP audio stream receiver (port 4010)"
+        default y
+        help
+            The receiver behind tools/stream.py and tools/brick_sender.py (PC sound through the virtual cable).
+
+    config AB_FEATURE_POWERSAVE
+        bool "Amp power saving (Hi-Z after a while, power-down after longer)"
+        default y
+        help
+            The idle timers and the /power endpoint. Without it the amp stays awake (muted when nothing plays).
+
+    config AB_FEATURE_SNTP
+        bool "Network clock (SNTP)"
+        default y
+        help
+            Sets the clock from the internet so the page can show the time. Needed by any future time-of-day feature.
+
+    config AB_FEATURE_SAFEMODE
+        bool "Safe mode after repeated crashes"
+        default y
+        help
+            After three boots in a row that did not stay up for 30 s, the optional features are held off so the page and OTA still work.
+
+    config AB_FEATURE_BOOTINFO
+        bool "Restart diagnostics (why did the board restart?)"
+        default y
+        help
+            Remembers the reset reason, counts boots and abnormal restarts, and shows them on the page.
 
 endmenu

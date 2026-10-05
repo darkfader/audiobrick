@@ -27,3 +27,6 @@ void ambient_http_register(httpd_handle_t server);   // registers the ambient sc
 
 // Mark the running image as good so the bootloader will not roll back.
 void ota_mark_valid(void);
+
+// Registered by ota_http_register_more() in playback_http.c when the clips feature is built.
+void clips_http_register(httpd_handle_t server);

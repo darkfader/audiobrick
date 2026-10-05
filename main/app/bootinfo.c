@@ -1,8 +1,12 @@
+#include "sdkconfig.h"
 #include "bootinfo.h"
 
 #include "esp_log.h"
 #include "esp_system.h"
 #include "nvs.h"
+
+#if CONFIG_AB_FEATURE_BOOTINFO  // AB_GATE: the whole file is only built when this feature is switched on
+
 
 static const char *TAG = "bootinfo";
 static const char *s_reason = "unknown";
@@ -42,3 +46,5 @@ const char *bootinfo_reason(void) { return s_reason; }
 bool bootinfo_abnormal(void) { return s_abnormal; }
 uint32_t bootinfo_count(void) { return s_count; }
 uint32_t bootinfo_crashes(void) { return s_crashes; }
+
+#endif  // CONFIG_AB_FEATURE_BOOTINFO

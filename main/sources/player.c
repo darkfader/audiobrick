@@ -1,3 +1,4 @@
+#include "sdkconfig.h"
 #include "player.h"
 
 #include <dirent.h>
@@ -10,6 +11,9 @@
 #include "freertos/task.h"
 #include "media.h"
 #include "storage.h"
+
+#if CONFIG_AB_FEATURE_CLIPS  // AB_GATE: the whole file is only built when this feature is switched on
+
 
 static const char *TAG = "player";
 
@@ -148,3 +152,5 @@ void player_init(void)
 {
     xTaskCreate(player_task, "player", 4096, NULL, 3, NULL);
 }
+
+#endif  // CONFIG_AB_FEATURE_CLIPS

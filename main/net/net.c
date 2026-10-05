@@ -9,7 +9,9 @@
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_netif.h"
+#if CONFIG_AB_FEATURE_SNTP
 #include "esp_netif_sntp.h"
+#endif
 #include <stdlib.h>
 #include <time.h>
 #include "sdkconfig.h"
@@ -19,9 +21,12 @@
 
 static const char *TAG = "net";
 
-static char s_ip[16];
+static char s_eth_ip[16];    // address on the wired interface ("" = none)
+static char s_wifi_ip[16];   // address on the Wi-Fi interface ("" = none)
 static esp_eth_handle_t s_eth;
-static volatile bool s_has_ip;
+static volatile bool s_has_ip;   // either interface has an address
+
+static void update_has_ip(void) { s_has_ip = s_eth_ip[0] || s_wifi_ip[0]; }
 
 static void on_eth_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
@@ -31,8 +36,8 @@ static void on_eth_event(void *arg, esp_event_base_t base, int32_t id, void *dat
         break;
     case ETHERNET_EVENT_DISCONNECTED:
         ESP_LOGW(TAG, "link down");
-        s_has_ip = false;
-        s_ip[0] = '\0';
+        s_eth_ip[0] = '\0';
+        update_has_ip();
         break;
     default:
         break;
@@ -60,12 +65,10 @@ static void mdns_start(void)
 }
 #endif
 
-static void on_got_ip(void *arg, esp_event_base_t base, int32_t id, void *data)
+// Network time follows whichever interface comes up first.
+static void on_network_up(void)
 {
-    const ip_event_got_ip_t *ev = data;
-    snprintf(s_ip, sizeof s_ip, IPSTR, IP2STR(&ev->ip_info.ip));
-    s_has_ip = true;
-    ESP_LOGI(TAG, "got IP %s", s_ip);
+#if CONFIG_AB_FEATURE_SNTP
     static bool sntp_started;
     if (!sntp_started) {  // network time: the clock is set (and kept right) from the pool, shown in the page's status
         sntp_started = true;
@@ -74,6 +77,25 @@ static void on_got_ip(void *arg, esp_event_base_t base, int32_t id, void *data)
         esp_sntp_config_t cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
         if (esp_netif_sntp_init(&cfg) != ESP_OK) ESP_LOGW(TAG, "SNTP init failed");
     }
+#endif
+}
+
+static void on_got_ip(void *arg, esp_event_base_t base, int32_t id, void *data)
+{
+    const ip_event_got_ip_t *ev = data;
+    bool wifi = id == IP_EVENT_STA_GOT_IP;
+    char *dst = wifi ? s_wifi_ip : s_eth_ip;
+    snprintf(dst, 16, IPSTR, IP2STR(&ev->ip_info.ip));
+    update_has_ip();
+    ESP_LOGI(TAG, "got IP %s (%s)", dst, wifi ? "Wi-Fi" : "Ethernet");
+    on_network_up();
+}
+
+static void on_lost_ip(void *arg, esp_event_base_t base, int32_t id, void *data)
+{
+    s_wifi_ip[0] = '\0';
+    update_has_ip();
+    ESP_LOGW(TAG, "Wi-Fi address lost");
 }
 
 bool net_start(void)
@@ -132,6 +154,8 @@ bool net_start(void)
 
     ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, on_eth_event, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, on_got_ip, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, on_got_ip, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_LOST_IP, on_lost_ip, NULL));
     s_eth = eth;
     ESP_ERROR_CHECK(esp_eth_start(eth));
 #if CONFIG_AB_FEATURE_MDNS
@@ -144,7 +168,9 @@ bool net_start(void)
 }
 
 bool net_has_ip(void)     { return s_has_ip; }
-const char *net_ip_str(void) { return s_ip; }
+const char *net_ip_str(void) { return s_eth_ip[0] ? s_eth_ip : s_wifi_ip; }   // wired wins, as in the routing table
+const char *net_eth_ip_str(void) { return s_eth_ip; }
+const char *net_wifi_ip_str(void) { return s_wifi_ip; }
 
 void *net_eth_handle(void) { return s_eth; }
 

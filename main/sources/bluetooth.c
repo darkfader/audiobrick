@@ -28,6 +28,7 @@ static const char *TAG = "bt";
 
 #define PAIRING_WINDOW_S 120
 #define BOOT_PAIRING_WINDOW_S 180
+#define BT_MIN_PREBUFFER_MS 120   // A2DP delivers in bursts; a 50 ms buffer (the global low-latency default) would run dry between them
 #define LATENCY_HEADROOM_MS 180   // drop incoming audio when the buffer is this far above the pre-buffer (source clock runs fast)
 
 typedef struct {
@@ -42,6 +43,8 @@ typedef struct {
     bool audio_started;
     uint32_t rate;
     uint32_t packets, dropped, bytes;
+    uint32_t underruns;  // dropouts at the speaker, summed over all sessions since the Brick started
+    uint32_t ur_session; // the part of media_underruns() already added above
     char name[32];       // our name, as seen by phones
     char peer[18];       // address of the connected device
     char peer_name[40];
@@ -126,9 +129,16 @@ static void data_cb(const uint8_t *data, uint32_t len)
             return;
         }
         s.ours = true;
+        s.ur_session = 0;
+        media_set_slot_min_prebuffer_ms(SLOT_MAIN, BT_MIN_PREBUFFER_MS);
         s_rs_rate = 0;
     }
-    if (media_buffer_ms() > media_prebuffer_ms() + LATENCY_HEADROOM_MS) {
+    uint32_t ur = media_underruns();   // count dropouts across sessions (media resets its own counter at every start)
+    if (ur > s.ur_session) {
+        s.underruns += ur - s.ur_session;
+        s.ur_session = ur;
+    }
+    if (media_buffer_ms() > (media_prebuffer_ms() > BT_MIN_PREBUFFER_MS ? media_prebuffer_ms() : BT_MIN_PREBUFFER_MS) + LATENCY_HEADROOM_MS) {
         s.dropped++;
         return;
     }
@@ -169,9 +179,22 @@ static void pair_timeout(void *arg)
     ESP_LOGI(TAG, "pairing window closed");
 }
 
+// Drops the connected device (if any) and stops connect-back, so it does not grab the link again at once.
+static void disconnect_peer(void)
+{
+    s_conn_tries = 0;
+    if (!s.connected || !s.stack_up) return;
+    esp_bd_addr_t a;
+    unsigned b[6];
+    if (sscanf(s.peer, "%x:%x:%x:%x:%x:%x", &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]) != 6) return;
+    for (int i = 0; i < 6; i++) a[i] = (uint8_t)b[i];
+    esp_a2d_sink_disconnect(a);
+}
+
 static void set_pairing(bool on)
 {
     s.pairing = on && s.enabled;
+    if (s.pairing) disconnect_peer();   // a new pairing window means a new device: free the single link
     esp_timer_stop(s_pair_timer);
     if (s.pairing) esp_timer_start_once(s_pair_timer, (int64_t)PAIRING_WINDOW_S * 1000000);
     apply_scan_mode();
@@ -298,7 +321,7 @@ static void a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *p)
             s.connected = true;
             // Tell the source how long the Brick takes from receiving audio to the speaker (units of 0.1 ms): the pre-buffer plus the
             // output stage (about 37 ms). Phones that support AVDTP delay reporting use it to keep video in sync with the sound.
-            esp_a2d_sink_set_delay_value((uint16_t)((media_prebuffer_ms() + 40) * 10));
+            esp_a2d_sink_set_delay_value((uint16_t)(((media_prebuffer_ms() > BT_MIN_PREBUFFER_MS ? media_prebuffer_ms() : BT_MIN_PREBUFFER_MS) + 40) * 10));
             remember_peer(p->conn_stat.remote_bda);
             s.peer_name[0] = '\0';
             esp_bt_gap_read_remote_name(p->conn_stat.remote_bda);
@@ -443,10 +466,10 @@ static esp_err_t get_handler(httpd_req_t *req)
     char json[640];
     snprintf(json, sizeof json,
              "{\"enabled\":%s,\"ssp\":%s,\"pair_boot\":%s,\"stack_up\":%s,\"name\":\"%s\",\"pairing\":%s,\"connected\":%s,\"peer\":\"%s\",\"peer_name\":\"%s\","
-             "\"playing\":%s,\"rate\":%u,\"packets\":%u,\"dropped\":%u,\"rssi_delta\":%d,\"bonded\":%s,\"free_heap\":%u}\n",
+             "\"playing\":%s,\"rate\":%u,\"packets\":%u,\"dropped\":%u,\"underruns\":%u,\"rssi_delta\":%d,\"bonded\":%s,\"free_heap\":%u}\n",
              s.enabled ? "true" : "false", s.ssp ? "true" : "false", s.pair_boot ? "true" : "false", s.stack_up ? "true" : "false", s.name, s.pairing ? "true" : "false",
              s.connected ? "true" : "false", s.peer, s.peer_name, s.ours ? "true" : "false", (unsigned)s.rate,
-             (unsigned)s.packets, (unsigned)s.dropped, s.rssi_delta, bonded, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+             (unsigned)s.packets, (unsigned)s.dropped, (unsigned)s.underruns, s.rssi_delta, bonded, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, json);
 }
@@ -489,14 +512,7 @@ static esp_err_t post_handler(httpd_req_t *req)
             if (!s.enabled) {
                 s.pairing = false;
                 esp_timer_stop(s_pair_timer);
-                if (s.connected && s.stack_up) {
-                    esp_bd_addr_t a;
-                    unsigned b[6];
-                    if (sscanf(s.peer, "%x:%x:%x:%x:%x:%x", &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]) == 6) {
-                        for (int i = 0; i < 6; i++) a[i] = (uint8_t)b[i];
-                        esp_a2d_sink_disconnect(a);
-                    }
-                }
+                disconnect_peer();
             }
             apply_scan_mode();
         }
@@ -517,6 +533,14 @@ static esp_err_t pair_handler(httpd_req_t *req)
         return httpd_resp_sendstr(req, "switch Bluetooth on first\n");
     }
     set_pairing(on);
+    return get_handler(req);
+}
+
+// POST /bluetooth/disconnect  drops the connected device (it stays paired; use connect to bring it back)
+static esp_err_t disconnect_handler(httpd_req_t *req)
+{
+    if (!web_authorized(req)) return web_deny(req);
+    disconnect_peer();
     return get_handler(req);
 }
 
@@ -584,6 +608,7 @@ void bluetooth_http_register(httpd_handle_t server)
         { .uri = "/bluetooth/pair",   .method = HTTP_POST, .handler = pair_handler },
         { .uri = "/bluetooth/forget", .method = HTTP_POST, .handler = forget_handler },
         { .uri = "/bluetooth/connect", .method = HTTP_POST, .handler = connect_handler },
+        { .uri = "/bluetooth/disconnect", .method = HTTP_POST, .handler = disconnect_handler },
         { .uri = "/bluetooth/scan",   .method = HTTP_POST, .handler = scan_post },
         { .uri = "/bluetooth/scan",   .method = HTTP_GET,  .handler = scan_get },
     };
