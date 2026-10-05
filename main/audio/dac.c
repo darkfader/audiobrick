@@ -71,7 +71,8 @@ typedef struct { uint16_t hiz_s, off_s; } power_cfg_t;
 
 static i2c_master_bus_handle_t s_bus;
 static i2c_master_dev_handle_t s_dev;
-static int s_vol_db = DAC_DEFAULT_VOLUME_DB;
+static int s_vol_db = DAC_DEFAULT_VOLUME_DB;   // the volume that was asked for (saved); quiet hours may hold the real one lower
+static int s_quiet_cap = 1000;                  // quiet-hours ceiling in dB (1000 = none)
 static esp_timer_handle_t s_vol_save_timer;
 static bool s_vol_persist;   // true once the saved volume has been loaded: from then on changes are saved (after 3 s of calm)
 
@@ -295,12 +296,21 @@ bool dac_set_volume_db(int db)
         esp_timer_stop(s_vol_save_timer);
         esp_timer_start_once(s_vol_save_timer, 3000000);
     }
-    return write_reg(REG_DIG_VOL, (uint8_t)(0x30 + (-db) * 2)) || s_state == AMP_OFF;
+    int eff = db < s_quiet_cap ? db : s_quiet_cap;
+    return write_reg(REG_DIG_VOL, (uint8_t)(0x30 + (-eff) * 2)) || s_state == AMP_OFF;
 }
 
 int dac_get_volume_db(void)
 {
-    return s_vol_db;
+    return s_vol_db < s_quiet_cap ? s_vol_db : s_quiet_cap;   // what the amp really uses
+}
+
+void dac_set_quiet_cap(int db)
+{
+    int cap = db < -90 ? -90 : (db > 0 ? 1000 : db);
+    if (cap == s_quiet_cap) return;
+    s_quiet_cap = cap;
+    dac_set_volume_db(s_vol_db);   // re-apply the wanted volume under the new ceiling
 }
 
 bool dac_read_reg(uint8_t reg, uint8_t *val)

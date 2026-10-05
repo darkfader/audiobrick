@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Audio Brick installer</title>
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem;line-height:1.5}
+  code{background:#eee;padding:0 .25em;border-radius:3px}
+  @media (prefers-color-scheme:dark){body{background:#161616;color:#ddd}code{background:#333}}
+</style>
+</head>
+<body>
+<h1>Audio Brick firmware installer</h1>
+<p>Installs the open firmware for the Sonocotta Esparagus Audio Brick (ESP32 version) from your browser. Use Chrome or Edge on a computer; the Brick must be connected with its USB-C cable.</p>
+<p><esp-web-install-button manifest="manifest.json"><button slot="activate">Install firmware</button></esp-web-install-button></p>
+<h2>If it does not connect</h2>
+<p>On at least one board the automatic reset into download mode does not work. Then: press <b>Install</b> and pick the port, hold the <b>BOOT</b> button (the one farther from the board edge), tap <b>EN</b> (the one nearer the edge), keep holding BOOT until the installer reports it is connected. When the install is finished, tap <b>EN</b> once to start the new firmware.</p>
+<h2>What this does</h2>
+<ul>
+<li>Writes the bootloader, the partition table and the firmware. Settings (web password, Bluetooth pairings, volume) and stored clips are kept, unless the partition table changed between versions (then the clips are erased and have to be uploaded again).</li>
+<li>After that, updates go over the network: the web page of the Brick has a firmware upload, and <code>audiobrick-ota.bin</code> from the release page is the file to upload.</li>
+<li>The first start prints the web password on the serial console (115200 baud).</li>
+</ul>
+<p><a href="https://github.com/darkfader/audiobrick">Source code and documentation</a></p>
+</body>
+</html>

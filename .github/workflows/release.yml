@@ -1,0 +1,60 @@
+# Builds the firmware with ESP-IDF 5.5.3 when a version tag (v1.2.0, ...) is pushed, attaches the binaries to a GitHub release and
+# publishes the browser installer (installer/) with that firmware on GitHub Pages.
+# One-time setup in the repository: Settings -> Pages -> Source: "GitHub Actions".
+# Not run yet at the time of writing: check the first run and fix what it reports.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: espressif/idf:v5.5.3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build (default feature set)
+        run: |
+          . $IDF_PATH/export.sh
+          idf.py build
+          # one file for a blank or old board: bootloader + partition table + app at offset 0 (settings and clips are not touched)
+          idf.py merge-bin -o audiobrick-factory.bin   # the path is relative to build/
+      - name: Collect
+        run: |
+          mkdir -p out
+          cp build/audiobrick.bin out/audiobrick-ota.bin
+          cp build/audiobrick-factory.bin out/audiobrick-factory.bin
+          cp -r installer/. out/
+          VERSION="${GITHUB_REF_NAME:-dev}"
+          sed "s/__VERSION__/${VERSION}/" installer/manifest.json > out/manifest.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: out/*
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            out/audiobrick-factory.bin
+            out/audiobrick-ota.bin
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+
+  pages:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

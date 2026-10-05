@@ -19,6 +19,7 @@ void playback_settings_load(void);
 #include "player.h"
 #include "radio.h"
 #include "safemode.h"
+#include "schedule.h"
 #include "storage.h"
 #include "stream.h"
 #include "synth.h"
@@ -72,6 +73,7 @@ void app_main(void)
     if (!net_start() || !ota_http_start() || !stream_start()) {
         ESP_LOGE(TAG, "network init failed");
     }
+    schedule_init();
     wifi_client_init();  // after net_start (needs the event loop); stays off until a network has been added
 
     bool marked_valid = false;

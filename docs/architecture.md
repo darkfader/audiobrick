@@ -85,6 +85,7 @@ from `/status.features`).
 | `AB_FEATURE_VBAN` / `AB_FEATURE_SCREAM` | the two UDP network audio receivers (Scream is off by default) | |
 | `AB_FEATURE_BLUETOOTH` | A2DP sink (ESP32 only) | |
 | `AB_FEATURE_MDNS` | the `audiobrick.local` name | |
+| `AB_FEATURE_SCHEDULE` | sleep timer, quiet-hours volume ceiling, alarm clip (`sources/schedule.*`) | clock (SNTP) for quiet hours and alarm; clips for the alarm |
 | `AB_FEATURE_WIFI` | Wi-Fi client: scan, remember up to 8 networks, join the strongest; second interface next to Ethernet | |
 | `AB_FEATURE_SNTP` | network clock | |
 | `AB_FEATURE_POWERSAVE` | amp Hi-Z / power-down timers and `/power` | |

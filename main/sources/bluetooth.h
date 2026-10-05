@@ -13,4 +13,5 @@
 // "Off" (setting) means: invisible and refusing connections; the Bluetooth stack itself is only unloaded by a restart.
 
 void bluetooth_init(void);                         // start the stack if it was left switched on (flash setting)
+void bluetooth_disconnect(void);                   // let the connected device go (it stays paired) and stop connect-back
 void bluetooth_http_register(httpd_handle_t server);   // GET/POST /bluetooth, POST /bluetooth/pair, /bluetooth/forget

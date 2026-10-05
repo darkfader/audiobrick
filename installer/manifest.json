@@ -1,0 +1,11 @@
+{
+  "name": "Esparagus Audio Brick firmware",
+  "version": "__VERSION__",
+  "new_install_prompt_erase": false,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [ { "path": "audiobrick-factory.bin", "offset": 0 } ]
+    }
+  ]
+}

@@ -18,6 +18,7 @@ void dac_http_register(httpd_handle_t server);  // GET/POST /power
 bool dac_set_mute(bool mute);
 bool dac_set_volume_db(int db);  // clamped to [-90, speaker-profile cap]
 int dac_get_volume_db(void);
+void dac_set_quiet_cap(int db);   // ceiling for quiet hours (the wanted volume is kept and comes back); db >= 0 = no ceiling
 bool dac_read_reg(uint8_t reg, uint8_t *val);  // book 0, page 0 registers
 float dac_pvdd_volts(void);      // from the chip's PVDD ADC (0x5E); negative if unreadable
 bool dac_clear_faults(void);     // clear latched analog faults (FAULT_CLEAR, 0x78 bit 7)

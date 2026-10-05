@@ -191,6 +191,8 @@ static void disconnect_peer(void)
     esp_a2d_sink_disconnect(a);
 }
 
+void bluetooth_disconnect(void) { disconnect_peer(); }
+
 static void set_pairing(bool on)
 {
     s.pairing = on && s.enabled;
@@ -618,6 +620,7 @@ void bluetooth_http_register(httpd_handle_t server)
 #else  // feature switched off at build time
 
 void bluetooth_init(void) {}
+void bluetooth_disconnect(void) {}
 void bluetooth_http_register(httpd_handle_t server) { (void)server; }
 
 #endif

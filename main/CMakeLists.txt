@@ -11,6 +11,7 @@ idf_component_register(SRCS
                             "net/wifi.c"
                             "sources/ambient.c"
                             "sources/bluetooth.c"
+                            "sources/schedule.c"
                             "sources/clip.c"
                             "sources/netaudio.c"
                             "sources/player.c"

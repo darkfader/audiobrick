@@ -255,6 +255,39 @@ a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:
       </div>
     </div>
 
+    <div class="card" data-feature="schedule">
+      <h2>Sleep timer, quiet hours, alarm</h2>
+      <div class="row" style="align-items:flex-end">
+        <label>Sleep timer<select id="scSleep">
+          <option value="0">Off</option><option value="15">15 minutes</option><option value="30">30 minutes</option>
+          <option value="60">1 hour</option><option value="90">90 minutes</option><option value="120">2 hours</option>
+        </select></label>
+        <button id="scSleepGo">Start</button>
+        <span class="mut small" id="scSleepState"></span>
+      </div>
+      <div class="mut small" style="margin:4px 0 12px">Stops everything (music, ambient scene, Bluetooth device) when it runs out.</div>
+      <div class="row" style="align-items:flex-end">
+        <label style="flex:0 0 auto;flex-direction:row;align-items:center;gap:8px;color:var(--fg);font-size:14px"><input type="checkbox" id="scQuiet" style="width:auto"> Quiet hours</label>
+        <label>from<input type="time" id="scQFrom"></label>
+        <label>to<input type="time" id="scQTo"></label>
+        <label>volume ceiling (dB)<input type="number" id="scQDb" min="-90" max="-10" step="1" style="width:6em"></label>
+      </div>
+      <div class="mut small" style="margin:4px 0 12px">Your volume setting is kept and comes back after the window. Needs the network clock.</div>
+      <div class="row" style="align-items:flex-end">
+        <label style="flex:0 0 auto;flex-direction:row;align-items:center;gap:8px;color:var(--fg);font-size:14px"><input type="checkbox" id="scAlarm" style="width:auto"> Alarm</label>
+        <label>at<input type="time" id="scAt"></label>
+        <label>clip<select id="scClip"></select></label>
+        <label>plays for (s)<input type="number" id="scLen" min="5" max="1800" step="5" style="width:6em"></label>
+      </div>
+      <div class="row" id="scDays" style="align-items:center;margin-top:6px;gap:10px;flex-wrap:wrap"></div>
+      <div class="mut small" style="margin:4px 0 8px">The clip loops at the current volume (never louder than you set it). Press Stop to end it earlier.</div>
+      <div class="row" style="align-items:center">
+        <button class="primary" id="scSave">Save</button>
+        <button id="scTest">Test alarm now</button>
+        <span class="mut small" id="scState"></span>
+      </div>
+    </div>
+
     <div class="card" data-feature="wifi">
       <h2>Wi-Fi</h2>
       <div class="mut small" style="margin-bottom:8px">A second connection next to the Ethernet cable (the cable is used first). The Brick remembers up to 8 networks and joins the strongest one it can hear. Wi-Fi stays off until you add a network.</div>
@@ -357,7 +390,7 @@ function setLogin(v){
   $('clearFaults').classList.toggle('hide',!v);
   document.querySelectorAll('.auth').forEach(e=>e.classList.toggle('hide',!v));
   featuresReady.then(()=>{if(F.clips)loadClips()});
-  if(v){loadProfile();loadLatency();featuresReady.then(()=>{if(F.powersave)loadPower();if(F.announce)loadDuck();if(F.bluetooth)loadBt(true);if(F.wifi)loadWifi()});featuresReady.then(()=>{if(F.eq)loadEq();if(F.ambient)loadAmb();if(F.net)loadNet(true);if(F.radio)loadRadio(true);if(F.synth)loadSynth(true)})}
+  if(v){loadProfile();loadLatency();featuresReady.then(()=>{if(F.powersave)loadPower();if(F.announce)loadDuck();if(F.bluetooth)loadBt(true);if(F.wifi)loadWifi();if(F.schedule)loadSched(true)});featuresReady.then(()=>{if(F.eq)loadEq();if(F.ambient)loadAmb();if(F.net)loadNet(true);if(F.radio)loadRadio(true);if(F.synth)loadSynth(true)})}
 }
 async function checkSession(){
   try{const s=await (await fetch('/session',{credentials:'same-origin'})).json();setLogin(!!s.logged_in)}catch(e){}
@@ -402,6 +435,36 @@ async function showWifiScan(){
       b.onclick=()=>{$('wfSsid').value=n.ssid;$('wfPass').focus()};el.appendChild(b)});
     return}
 }
+const DAYN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+async function loadSched(fill){
+  try{const r=await fetch('/schedule',{credentials:'same-origin'});if(!r.ok)return;const c=await r.json();
+    $('scSleepState').textContent=c.sleep_left_s>0?('stops in '+Math.ceil(c.sleep_left_s/60)+' min'):'';
+    $('scState').textContent=(c.clock_ok?'':'No network clock yet: quiet hours and alarm wait for it. ')+(c.quiet_now?'Quiet hours are active. ':'')+(c.alarm_sounding?'Alarm is sounding.':'');
+    if(!fill)return;
+    $('scQuiet').checked=c.quiet_on;$('scQFrom').value=c.quiet_from;$('scQTo').value=c.quiet_to;$('scQDb').value=c.quiet_db;
+    $('scAlarm').checked=c.alarm_on;$('scAt').value=c.alarm_at;$('scLen').value=c.alarm_s;
+    const d=$('scDays');d.textContent='';
+    DAYN.forEach((n,i)=>{const l=document.createElement('label');l.style.cssText='flex:0 0 auto;flex-direction:row;align-items:center;gap:4px;color:var(--fg);font-size:14px';
+      const b=document.createElement('input');b.type='checkbox';b.style.width='auto';b.dataset.bit=i;b.checked=!!(c.alarm_days&(1<<i));
+      l.appendChild(b);l.appendChild(document.createTextNode(n));d.appendChild(l)});
+    const sel=$('scClip');sel.textContent='';
+    let names=[];
+    if(F.clips){try{names=(await (await fetch('/clips',{credentials:'same-origin'})).json()).files.map(f=>f.name)}catch(e){}}
+    if(c.alarm_clip&&!names.includes(c.alarm_clip))names.unshift(c.alarm_clip);
+    names.forEach(n=>{const o=document.createElement('option');o.value=n;o.textContent=n;sel.appendChild(o)});
+    sel.value=c.alarm_clip;
+  }catch(e){}
+}
+async function saveSched(){
+  let days=0;document.querySelectorAll('#scDays input').forEach(b=>{if(b.checked)days|=1<<(+b.dataset.bit)});
+  const lines=['quiet_on='+($('scQuiet').checked?1:0),'quiet_from='+$('scQFrom').value,'quiet_to='+$('scQTo').value,'quiet_db='+$('scQDb').value,
+    'alarm_on='+($('scAlarm').checked?1:0),'alarm_at='+$('scAt').value,'alarm_days='+days,'alarm_clip='+$('scClip').value,'alarm_s='+$('scLen').value];
+  if(await call('/schedule',{body:lines.join('\n')})){say('Saved.');loadSched(false)}
+}
+$('scSave').onclick=saveSched;
+$('scSleepGo').onclick=async()=>{if(await call('/schedule/sleep?min='+$('scSleep').value)){say($('scSleep').value=='0'?'Sleep timer off.':'Sleep timer started.');loadSched(false)}};
+$('scTest').onclick=async()=>{if(await call('/schedule/alarm_now')){say('Alarm started. Press Stop to end it.');loadSched(false)}};
+setInterval(()=>{if(loggedIn&&F.schedule)loadSched(false)},5000);
 async function loadDuck(){
   try{$('duckDb').value=(await (await fetch('/duck')).json()).duck_db}catch(e){}
 }

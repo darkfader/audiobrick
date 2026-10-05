@@ -40,6 +40,7 @@ Recommended: **one** playback device, no extra windows: VB-Cable plus a hidden b
 ## Documentation
 
 - [docs/architecture.md](docs/architecture.md): **start here to read the code**: folders, audio path, threads, settings, how to add a source, the component switches.
+- `installer/` and `.github/workflows/release.yml`: pushing a tag `vX.Y.Z` builds the firmware in CI, attaches `audiobrick-factory.bin` (first install, flash at offset 0) and `audiobrick-ota.bin` (network update) to a release, and publishes a browser installer on GitHub Pages (needs Pages set to "GitHub Actions" once). Not run yet.
 - [CLAUDE.md](CLAUDE.md): detailed project notes, pinout, measurements, lessons learned (written while building this; long).
 - [docs/bluetooth.md](docs/bluetooth.md): Bluetooth audio, pairing rules, antenna, test results and known problems.
 - [docs/connectors.md](docs/connectors.md): the board's connectors, free GPIOs and what they could be used for.

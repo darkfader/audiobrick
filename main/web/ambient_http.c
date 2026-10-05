@@ -21,6 +21,7 @@
 #include "ota_http.h"
 #include "player.h"
 #include "radio.h"
+#include "schedule.h"
 #include "synth.h"
 #include "wifi.h"
 
@@ -184,6 +185,9 @@ void ambient_http_register(httpd_handle_t server)
 #endif
 #if CONFIG_AB_FEATURE_WIFI
     wifi_client_http_register(server);
+#endif
+#if CONFIG_AB_FEATURE_SCHEDULE
+    schedule_http_register(server);
 #endif
 #if CONFIG_AB_FEATURE_VBAN || CONFIG_AB_FEATURE_SCREAM
     netaudio_http_register(server);

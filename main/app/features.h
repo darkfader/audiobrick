@@ -39,6 +39,11 @@
 #else
 #define AB_HAS_MDNS 0
 #endif
+#ifdef CONFIG_AB_FEATURE_SCHEDULE
+#define AB_HAS_SCHEDULE 1
+#else
+#define AB_HAS_SCHEDULE 0
+#endif
 #ifdef CONFIG_AB_FEATURE_WIFI
 #define AB_HAS_WIFI 1
 #else
