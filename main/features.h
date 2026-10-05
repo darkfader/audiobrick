@@ -39,3 +39,8 @@
 #else
 #define AB_HAS_MDNS 0
 #endif
+#ifdef CONFIG_AB_FEATURE_BLUETOOTH
+#define AB_HAS_BLUETOOTH 1
+#else
+#define AB_HAS_BLUETOOTH 0
+#endif

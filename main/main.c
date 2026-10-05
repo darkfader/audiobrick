@@ -12,6 +12,7 @@
 #include "media.h"
 void playback_settings_load(void);
 #include "ambient.h"
+#include "bluetooth.h"
 #include "net.h"
 #include "netaudio.h"
 #include "player.h"
@@ -66,6 +67,7 @@ void app_main(void)
     netaudio_init();
 #endif
     synth_init();
+    bluetooth_init();  // only starts the stack if it was left switched on
     if (!net_start() || !ota_http_start() || !stream_start()) {
         ESP_LOGE(TAG, "network init failed");
     }

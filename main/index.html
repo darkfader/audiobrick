@@ -251,6 +251,28 @@ a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:
       </div>
     </div>
 
+    <div class="card" data-feature="bluetooth">
+      <h2>Bluetooth audio</h2>
+      <div class="mut small" style="margin-bottom:8px">Lets a phone or PC play music on the Brick. Only devices you paired can connect: to add one, press <b>Pair a new device</b> and pick the Brick in the other device's Bluetooth list within 2 minutes.</div>
+      <div class="row" style="align-items:center">
+        <label style="flex:0 0 auto;flex-direction:row;align-items:center;gap:8px;color:var(--fg);font-size:14px"><input type="checkbox" id="btOn" style="width:auto"> Bluetooth on</label>
+        <label>Name seen by phones<input type="text" id="btName" maxlength="31"></label>
+        <button class="primary" id="btSave">Save</button>
+      </div>
+      <div class="row" style="align-items:center;margin-top:6px">
+        <label style="flex:0 0 auto;flex-direction:row;align-items:center;gap:8px;color:var(--fg);font-size:14px"><input type="checkbox" id="btSsp" style="width:auto"> Use "just works" pairing instead of the PIN 0000 (restarts the Brick; devices have to be paired again; Windows PCs need the PIN method)</label>
+      </div>
+      <div class="row" style="align-items:center;margin-top:6px">
+        <label style="flex:0 0 auto;flex-direction:row;align-items:center;gap:8px;color:var(--fg);font-size:14px"><input type="checkbox" id="btPairBoot" style="width:auto"> Open the pairing window for 3 minutes after every start (convenient; anyone nearby could pair during that time)</label>
+      </div>
+      <div class="row" style="align-items:center;margin-top:8px">
+        <button id="btPair">Pair a new device (2 min)</button>
+        <button id="btConnect">Connect to last device</button>
+        <button id="btForget" class="danger">Forget all paired devices</button>
+      </div>
+      <div class="mut small" style="margin-top:8px" id="btState">–</div>
+    </div>
+
     <div class="card">
       <h2>Streaming delay</h2>
       <div class="mut small" style="margin-bottom:8px">How much sound the Brick collects before it starts playing a stream or clip. Less = lower delay, but more risk of dropouts if the network hiccups. Wired Ethernet copes with the low setting; choose Normal or Safe if you hear dropouts.</div>
@@ -313,7 +335,7 @@ function setLogin(v){
   $('clearFaults').classList.toggle('hide',!v);
   document.querySelectorAll('.auth').forEach(e=>e.classList.toggle('hide',!v));
   loadClips();
-  if(v){loadProfile();loadPower();loadLatency();loadDuck();featuresReady.then(()=>{if(F.eq)loadEq();if(F.ambient)loadAmb();if(F.net)loadNet(true);if(F.radio)loadRadio(true);if(F.synth)loadSynth(true)})}
+  if(v){loadProfile();loadPower();loadLatency();loadDuck();featuresReady.then(()=>{if(F.bluetooth)loadBt(true)});featuresReady.then(()=>{if(F.eq)loadEq();if(F.ambient)loadAmb();if(F.net)loadNet(true);if(F.radio)loadRadio(true);if(F.synth)loadSynth(true)})}
 }
 async function checkSession(){
   try{const s=await (await fetch('/session',{credentials:'same-origin'})).json();setLogin(!!s.logged_in)}catch(e){}
@@ -323,6 +345,16 @@ async function loadLatency(){
     const opts=[...sel.options].map(o=>+o.value);
     if(!opts.includes(l.prebuffer_ms)){const o=document.createElement('option');o.value=l.prebuffer_ms;o.textContent='Custom ('+l.prebuffer_ms+' ms)';sel.appendChild(o)}
     sel.value=l.prebuffer_ms;$('latMs').value=l.prebuffer_ms;$('latNote').textContent=''}catch(e){}
+}
+async function loadBt(fill){
+  try{const r=await fetch('/bluetooth',{credentials:'same-origin'});if(!r.ok)return;const b=await r.json();
+    if(fill){$('btOn').checked=b.enabled;$('btName').value=b.name;$('btPairBoot').checked=b.pair_boot;$('btSsp').checked=b.ssp}
+    let t=!b.enabled?'Off (invisible, refuses connections).':!b.stack_up?'Starting…':
+      b.connected?('Connected to '+(b.peer_name||b.peer)+(b.playing?' · playing at '+(b.rate/1000)+' kHz':' · not playing')+' · '+b.packets+' packets'+(b.dropped?', '+b.dropped+' dropped':'')):
+      (b.pairing?'Pairing window OPEN: pick "'+b.name+'" in your device\'s Bluetooth list.':'Ready: paired devices can connect.');
+    t+=' Paired devices: '+b.bonded.length+'.';
+    $('btState').textContent=t;$('btPair').textContent=b.pairing?'Close pairing window':'Pair a new device (2 min)';
+  }catch(e){}
 }
 async function loadDuck(){
   try{$('duckDb').value=(await (await fetch('/duck')).json()).duck_db}catch(e){}
@@ -736,6 +768,26 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&playing)stopTone()}
 setInterval(()=>{if(playing)sendTone()},5000);   // keeps the firmware's dead-man timer alive
 // Start the frequency slider at 440 Hz.
 function initFreq(){appliedFreqP=Math.round(pOf(440));$('freqS').value=appliedFreqP;showTone()}
+$('btSave').onclick=async()=>{
+  const name=encodeURIComponent($('btName').value.trim()||'Audio Brick');
+  if(await call('/bluetooth?on='+($('btOn').checked?1:0)+'&name='+name+'&pairboot='+($('btPairBoot').checked?1:0))){
+    say('Bluetooth settings saved.');loadBt(true);
+    const want=$('btSsp').checked?1:0;
+    const cur=await (await fetch('/bluetooth',{credentials:'same-origin'})).json();
+    if((cur.ssp?1:0)!==want&&confirm('Change the pairing method? The Brick restarts and every device has to be paired again.')){
+      await call('/bluetooth?ssp='+want);say('Restarting\u2026 reload the page in a few seconds.')}
+  }
+};
+$('btPair').onclick=async()=>{
+  const open=$('btPair').textContent.startsWith('Close');
+  if(await call('/bluetooth/pair?on='+(open?0:1)))loadBt(false)
+};
+$('btConnect').onclick=async()=>{if(await call('/bluetooth/connect')){say('Connecting\u2026');loadBt(false)}};
+$('btForget').onclick=async()=>{
+  if(!confirm('Forget all paired Bluetooth devices? They will have to be paired again.'))return;
+  if(await call('/bluetooth/forget')){say('Paired devices forgotten.');loadBt(false)}
+};
+setInterval(()=>{if(loggedIn&&F.bluetooth)loadBt(false)},3000);
 $('duckSave').onclick=async()=>{
   const db=parseInt($('duckDb').value,10);
   if(!(db>=0&&db<=30)){say('Enter 0 to 30 dB.',true);return}

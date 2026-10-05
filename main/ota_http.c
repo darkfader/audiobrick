@@ -9,6 +9,7 @@
 #include "dac.h"
 #include "esp_app_format.h"
 #include "esp_http_server.h"
+#include "esp_attr.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 #include "esp_random.h"
@@ -313,7 +314,7 @@ static esp_err_t status_handler(httpd_req_t *req)
              "\"player\":{\"state\":\"%s\",\"clip\":\"%s\",\"index\":%d,\"count\":%d},"
              "\"ambient\":{\"on\":%s,\"running\":%s,\"bg\":\"%s\",\"event\":\"%s\"},"
              "\"heap\":{\"free\":%u,\"largest\":%u,\"min\":%u},"
-             "\"features\":{\"eq\":%s,\"ambient\":%s,\"vban\":%s,\"scream\":%s,\"radio\":%s,\"synth\":%s}}\n",
+             "\"features\":{\"eq\":%s,\"ambient\":%s,\"vban\":%s,\"scream\":%s,\"radio\":%s,\"synth\":%s,\"bluetooth\":%s}}\n",
              app->version, app->date, app->time, part ? part->label : "?",
              (long long)(esp_timer_get_time() / 1000000), net_ip_str(), bootinfo_reason(), bootinfo_abnormal() ? "true" : "false", (unsigned)bootinfo_count(), (unsigned)bootinfo_crashes(), clock_str, clock_ok ? "true" : "false", pvdd,
              dac_fault_active() ? "true" : "false", dac_warning_active() ? "true" : "false",
@@ -332,7 +333,7 @@ static esp_err_t status_handler(httpd_req_t *req)
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
              FEAT(AB_HAS_EQ), FEAT(AB_HAS_AMBIENT), FEAT(AB_HAS_VBAN), FEAT(AB_HAS_SCREAM),
-             FEAT(AB_HAS_RADIO), FEAT(AB_HAS_SYNTH));
+             FEAT(AB_HAS_RADIO), FEAT(AB_HAS_SYNTH), FEAT(AB_HAS_BLUETOOTH));
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, json);
 }
@@ -463,7 +464,7 @@ static esp_err_t update_handler(httpd_req_t *req)
     }
     ESP_LOGI(TAG, "OTA: %d bytes into %s", req->content_len, next->label);
 
-    static char buf[4096];
+    static EXT_RAM_BSS_ATTR char buf[4096];
     int remaining = req->content_len;
     while (remaining > 0) {
         int n = httpd_req_recv(req, buf, remaining < (int)sizeof buf ? remaining : (int)sizeof buf);

@@ -16,6 +16,7 @@
 #include "clip.h"
 #include "dac.h"
 #include "esp_http_server.h"
+#include "esp_attr.h"
 #include "esp_log.h"
 #include "nvs.h"
 #include "speaker_limits.h"
@@ -99,7 +100,7 @@ static esp_err_t upload_handler(httpd_req_t *req)
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "cannot create file");
         return ESP_FAIL;
     }
-    static char buf[4096];
+    static EXT_RAM_BSS_ATTR char buf[4096];
     int remaining = req->content_len;
     while (remaining > 0) {
         int n = httpd_req_recv(req, buf, remaining < (int)sizeof buf ? remaining : (int)sizeof buf);

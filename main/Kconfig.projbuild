@@ -49,4 +49,12 @@ menu "Audio Brick features"
         help
             Advertises the hostname "audiobrick" and the web, OSC and VBAN services on the local network.
 
+    config AB_FEATURE_BLUETOOTH
+        bool "Bluetooth audio (A2DP sink, ESP32 only)"
+        default y
+        depends on IDF_TARGET_ESP32
+        help
+            Lets a phone or PC play music on the Brick. Adds about 300 KB of code and, once switched on from the web page,
+            roughly 60 KB of internal RAM (the stack lives in PSRAM where it can). Classic Bluetooth only exists on the ESP32, not the S3.
+
 endmenu

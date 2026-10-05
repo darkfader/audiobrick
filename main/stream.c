@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include "esp_attr.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -63,9 +64,9 @@ static void serve_client(int sock)
     tv.tv_sec = 1;  // wake up regularly to notice aborts and stalled senders
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
 
-    static uint8_t raw[RECV_CHUNK + 8];
-    static int16_t stereo[RECV_CHUNK + 16];  // mono input yields up to RECV_CHUNK/2 frames of 2 samples
-    static int16_t out[4096];
+    static EXT_RAM_BSS_ATTR uint8_t raw[RECV_CHUNK + 8];
+    static EXT_RAM_BSS_ATTR int16_t stereo[RECV_CHUNK + 16];  // mono input yields up to RECV_CHUNK/2 frames of 2 samples
+    static EXT_RAM_BSS_ATTR int16_t out[4096];
     resampler_t rs;
     resampler_init(&rs, rate);
     size_t carry = 0;

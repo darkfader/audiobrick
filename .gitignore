@@ -9,3 +9,5 @@ measurements/*.wav
 build_*/
 __pycache__/
 *.pyc
+sdkconfig_*
+sdkconfig.defaults.btfix
