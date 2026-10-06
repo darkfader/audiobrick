@@ -57,3 +57,15 @@ Two MP3 decoders at once (a clip over a stream) use about 60 KB of internal RAM 
 - `tools/windows_bt_connect.py`: asks Windows to connect or disconnect the paired Brick's audio (`BluetoothSetServiceState`).
 - `sdkconfig.defaults.btdebug`: an overlay that switches on the Bluetooth stack's own detailed logs (it also sets the global log level to debug, which makes the image nearly fill the 2 MB slot and floods the serial port; never leave that build on the board); build it in a separate folder:
   `idf.py -B build_btdebug -D SDKCONFIG=sdkconfig_btdebug -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.btdebug" build`. Read the log from the serial port without resetting the board (pyserial with `dtr=False`, `rts=False`).
+
+## Volume keys (AVRCP absolute volume)
+
+Setting `absvol` (page: Bluetooth card, "Let the phone's or PC's volume control set the amp volume"; `POST /bluetooth?absvol=0|1`, restarts the Brick; off by default). When on, the Brick advertises
+absolute volume: the volume control of the phone or PC moves the **amp** volume instead of scaling the audio in the source.
+
+- The remote's 0..127 maps onto the same scale as the page's volume slider: -70 dB up to the speaker profile's cap, so the loudness limit always holds.
+- Rising is limited to 2 dB per 250 ms, falling is immediate (like every other volume control here).
+- A volume changed on the Brick (page, sender, quiet hours) is reported to the remote ("changed" notification), so the phone's slider follows. Each report makes the phone re-register, which shows in the serial log as `remote registered for notification 13`.
+- Tested 2026-10-06 with an Android phone: its volume keys arrived as `remote volume 89/127 -> -35 dB` ... and moved the amp; the slider followed volume changes made on the page.
+- **Lesson:** the AVRCP services (`esp_avrc_ct_init`, `esp_avrc_tg_init`) must be initialised **before** `esp_a2d_sink_init()`. In the other order the stack logs `BT_BTC: AVRC not Init, not using it` and no remote-control link ever opens (no volume, no media keys). The Windows connection kept working in the wrong order because the service records exist anyway.
+- Not tested yet with Windows (the PC was not connected during the test).

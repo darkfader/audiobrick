@@ -318,6 +318,9 @@ a.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;color:
         <label style="flex:0 0 auto;flex-direction:row;align-items:center;gap:8px;color:var(--fg);font-size:14px"><input type="checkbox" id="btSsp" style="width:auto"> Use "just works" pairing instead of the PIN 0000 (restarts the Brick; devices have to be paired again; Windows PCs need the PIN method)</label>
       </div>
       <div class="row" style="align-items:center;margin-top:6px">
+        <label style="flex:0 0 auto;flex-direction:row;align-items:center;gap:8px;color:var(--fg);font-size:14px"><input type="checkbox" id="btAbsVol" style="width:auto"> Let the phone's or PC's volume control set the amp volume (restarts the Brick). The remote's volume maps onto the same scale as the volume slider up to your speaker profile's limit, rises at most 2 dB per quarter second, and follows changes made here.</label>
+      </div>
+      <div class="row" style="align-items:center;margin-top:6px">
         <label style="flex:0 0 auto;flex-direction:row;align-items:center;gap:8px;color:var(--fg);font-size:14px"><input type="checkbox" id="btPairBoot" style="width:auto"> Open the pairing window for 3 minutes after every start (convenient; anyone nearby could pair during that time)</label>
       </div>
       <div class="row" style="align-items:center;margin-top:8px">
@@ -404,7 +407,7 @@ async function loadLatency(){
 }
 async function loadBt(fill){
   try{const r=await fetch('/bluetooth',{credentials:'same-origin'});if(!r.ok)return;const b=await r.json();
-    if(fill){$('btOn').checked=b.enabled;$('btName').value=b.name;$('btPairBoot').checked=b.pair_boot;$('btSsp').checked=b.ssp}
+    if(fill){$('btOn').checked=b.enabled;$('btName').value=b.name;$('btPairBoot').checked=b.pair_boot;$('btSsp').checked=b.ssp;$('btAbsVol').checked=b.absvol}
     let t=!b.enabled?'Off (invisible, refuses connections).':!b.stack_up?'Starting…':
       b.connected?('Connected to '+(b.peer_name||b.peer)+(b.playing?' · playing at '+(b.rate/1000)+' kHz':' · not playing')+' · '+b.packets+' packets'+(b.dropped?', '+b.dropped+' dropped':'')):
       (b.pairing?'Pairing window OPEN: pick "'+b.name+'" in your device\'s Bluetooth list.':'Ready: paired devices can connect.');
@@ -885,7 +888,10 @@ $('btSave').onclick=async()=>{
     const want=$('btSsp').checked?1:0;
     const cur=await (await fetch('/bluetooth',{credentials:'same-origin'})).json();
     if((cur.ssp?1:0)!==want&&confirm('Change the pairing method? The Brick restarts and every device has to be paired again.')){
-      await call('/bluetooth?ssp='+want);say('Restarting\u2026 reload the page in a few seconds.')}
+      await call('/bluetooth?ssp='+want);say('Restarting\u2026 reload the page in a few seconds.');return}
+    const wantAv=$('btAbsVol').checked?1:0;
+    if((cur.absvol?1:0)!==wantAv&&confirm('Change who controls the volume? The Brick restarts and the phone or PC has to reconnect.')){
+      await call('/bluetooth?absvol='+wantAv);say('Restarting\u2026 reload the page in a few seconds.')}
   }
 };
 $('btPair').onclick=async()=>{

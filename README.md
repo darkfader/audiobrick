@@ -19,7 +19,7 @@ This repository is an independent community project, not made or endorsed by Son
   against a real Home Assistant yet).
 - **Idle power saving:** output fades to zero, the amp mutes, goes Hi-Z after 20 s and powers down after 10 minutes, and wakes with no audible cost
   (measured, see [docs/tas5825m-power-down.md](docs/tas5825m-power-down.md)).
-- **Bluetooth audio** (ESP32 only): a phone can play music on the Brick through an explicit pairing window; see [docs/bluetooth.md](docs/bluetooth.md) (tested with one phone and with a Windows 11 PC, one device at a time; **the module needs an external antenna**).
+- **Bluetooth audio** (ESP32 only): a phone can play music on the Brick through an explicit pairing window; see [docs/bluetooth.md](docs/bluetooth.md) (tested with one phone and with a Windows 11 PC, one device at a time; optionally the phone's volume keys control the amp volume; **the module needs an external antenna**).
 - **Announcements:** `POST /announce` plays an uploaded MP3/WAV (for example a Home Assistant text-to-speech message) over whatever is playing; the stream is lowered meanwhile (adjustable ducking). The page shows why the board last restarted.
 - **Sleep timer, quiet hours and an alarm** (a stored clip at a set time and weekdays): one page card, see [docs/architecture.md](docs/architecture.md) for the switch. The amp volume is remembered across restarts.
 - **Adjustable streaming delay** (Low about 50 ms, the default; Normal about 170 ms; Safe about 400 ms buffer) and a network-synced clock (SNTP).

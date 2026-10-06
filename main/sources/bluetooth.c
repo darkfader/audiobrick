@@ -20,6 +20,9 @@
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_timer.h"
+#include <limits.h>
+#include "dac.h"
+#include "speaker_limits.h"
 #include "media.h"
 #include "nvs.h"
 #include "ota_http.h"
@@ -34,6 +37,7 @@ static const char *TAG = "bt";
 typedef struct {
     bool enabled;        // setting (flash): visible / connectable
     bool pair_boot;      // setting (flash): open the pairing window for a few minutes after every start
+    bool absvol;         // setting (flash): the remote device's volume control drives the amp (AVRCP absolute volume); changing it restarts the board
     bool ssp;            // setting (flash): pair with Secure Simple Pairing, or (default) with the PIN 0000; changing it restarts the board
     bool stack_up;
     bool pairing;
@@ -76,6 +80,7 @@ static void save_settings(void)
     nvs_set_u8(h, "bt_on", s.enabled);
     nvs_set_u8(h, "bt_pairboot", s.pair_boot);
     nvs_set_u8(h, "bt_ssp", s.ssp);
+    nvs_set_u8(h, "bt_absvol", s.absvol);
     nvs_set_str(h, "bt_name", s.name);
     nvs_commit(h);
     nvs_close(h);
@@ -85,10 +90,11 @@ static void load_settings(void)
 {
     nvs_handle_t h;
     if (nvs_open("audiobrick", NVS_READONLY, &h) != ESP_OK) return;
-    uint8_t on = 0, pb = 1, ssp = 1;
+    uint8_t on = 0, pb = 1, ssp = 1, av = 0;
     if (nvs_get_u8(h, "bt_on", &on) == ESP_OK) s.enabled = on != 0;
     if (nvs_get_u8(h, "bt_pairboot", &pb) == ESP_OK) s.pair_boot = pb != 0; else s.pair_boot = true;   // default: on
     if (nvs_get_u8(h, "bt_ssp", &ssp) == ESP_OK) s.ssp = ssp != 0; else s.ssp = false;   // default: PIN 0000 (works with Windows and phones)
+    if (nvs_get_u8(h, "bt_absvol", &av) == ESP_OK) s.absvol = av != 0;   // default: off
     size_t blen = sizeof s_last_peer;
     s_have_last = nvs_get_blob(h, "bt_last", s_last_peer, &blen) == ESP_OK && blen == sizeof s_last_peer;
     size_t len = sizeof s.name;
@@ -365,14 +371,85 @@ static void a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *p)
 
 static void avrc_ct_cb(esp_avrc_ct_cb_event_t event, esp_avrc_ct_cb_param_t *p)
 {
-    (void)event;
-    (void)p;
+    ESP_LOGI(TAG, "AVRCP controller event %d%s", (int)event, event == ESP_AVRC_CT_CONNECTION_STATE_EVT ? (p->conn_stat.connected ? " (connected)" : " (disconnected)") : "");
+}
+
+// Absolute volume: the phone's or PC's volume control moves the amp volume instead of scaling the audio in the source. The remote's 0..127 maps
+// onto the same scale as the page's volume slider (-70 dB up to the speaker profile's cap, so the cap always holds); upward steps are limited to 2 dB
+// per 250 ms like every other volume control here. A volume changed on the page (or by the sender) is reported back so the remote's slider follows.
+static bool s_vol_registered;          // the remote asked to be told about volume changes
+static int s_vol_reported = -1;        // 0..127: the value last received from or reported to the remote
+static int s_vol_target_db = INT_MIN;  // where the remote wants the volume (INT_MIN = nothing pending)
+static esp_timer_handle_t s_vol_timer;
+
+static int vol_to_db(int v)
+{
+    if (v < 0) v = 0;
+    if (v > 127) v = 127;
+    return (int)(-70.0f + (v / 127.0f) * (limits_max_volume_db() + 70) + 0.5f);
+}
+
+static int db_to_vol(int db)
+{
+    float lv = (db + 70.0f) / (limits_max_volume_db() + 70.0f);
+    if (lv < 0.0f) lv = 0.0f;
+    if (lv > 1.0f) lv = 1.0f;
+    return (int)(lv * 127.0f + 0.5f);
+}
+
+static void vol_tick(void *arg)
+{
+    if (!s.connected || !s.stack_up || !s.absvol) {
+        s_vol_target_db = INT_MIN;
+        return;
+    }
+    int cur = dac_get_volume_db();
+    if (s_vol_target_db != INT_MIN) {
+        int next = s_vol_target_db;
+        if (next > cur + 2) next = cur + 2;   // rise gently, fall at once
+        if (next != cur) dac_set_volume_db(next);
+        if (next == s_vol_target_db) s_vol_target_db = INT_MIN;
+        return;
+    }
+    if (s_vol_registered) {
+        int v = db_to_vol(cur);
+        if (v - s_vol_reported >= 2 || s_vol_reported - v >= 2) {   // changed locally: tell the remote once (it registers again afterwards)
+            esp_avrc_rn_param_t rn = { .volume = (uint8_t)v };
+            esp_avrc_tg_send_rn_rsp(ESP_AVRC_RN_VOLUME_CHANGE, ESP_AVRC_RN_RSP_CHANGED, &rn);
+            s_vol_reported = v;
+            s_vol_registered = false;
+        }
+    }
 }
 
 static void avrc_tg_cb(esp_avrc_tg_cb_event_t event, esp_avrc_tg_cb_param_t *p)
 {
-    (void)event;
-    (void)p;
+    ESP_LOGI(TAG, "AVRCP target event %d%s", (int)event, s.absvol ? "" : " (absolute volume off)");
+    if (!s.absvol) return;
+    switch (event) {
+    case ESP_AVRC_TG_CONNECTION_STATE_EVT:
+        ESP_LOGI(TAG, "AVRCP %s", p->conn_stat.connected ? "connected" : "disconnected");
+        s_vol_registered = false;
+        s_vol_target_db = INT_MIN;
+        s_vol_reported = -1;
+        break;
+    case ESP_AVRC_TG_SET_ABSOLUTE_VOLUME_CMD_EVT:
+        s_vol_reported = p->set_abs_vol.volume;
+        s_vol_target_db = vol_to_db(p->set_abs_vol.volume);
+        ESP_LOGI(TAG, "remote volume %d/127 -> %d dB", p->set_abs_vol.volume, s_vol_target_db);
+        break;
+    case ESP_AVRC_TG_REGISTER_NOTIFICATION_EVT:
+        ESP_LOGI(TAG, "remote registered for notification %d", (int)p->reg_ntf.event_id);
+        if (p->reg_ntf.event_id == ESP_AVRC_RN_VOLUME_CHANGE) {
+            s_vol_registered = true;
+            esp_avrc_rn_param_t rn = { .volume = (uint8_t)db_to_vol(dac_get_volume_db()) };
+            s_vol_reported = rn.volume;
+            esp_avrc_tg_send_rn_rsp(ESP_AVRC_RN_VOLUME_CHANGE, ESP_AVRC_RN_RSP_INTERIM, &rn);
+        }
+        break;
+    default:
+        break;
+    }
 }
 
 // ---- stack start ----------------------------------------------------------------------------------------------------
@@ -402,16 +479,24 @@ static bool stack_start(void)
     }
     esp_bt_gap_set_device_name(s.name);
     esp_bt_gap_register_callback(gap_cb);
+    // AVRCP must be initialised BEFORE the A2DP sink: otherwise the stack runs without remote control ("AVRC not Init, not using it").
+    esp_avrc_ct_init();
+    esp_avrc_ct_register_callback(avrc_ct_cb);
+    esp_avrc_tg_init();
+    esp_avrc_tg_register_callback(avrc_tg_cb);
+    if (s.absvol) {   // advertise absolute volume only when we honour it; otherwise the remote keeps scaling the audio itself
+        esp_avrc_rn_evt_cap_mask_t evt_set = { 0 };
+        esp_avrc_rn_evt_bit_mask_operation(ESP_AVRC_BIT_MASK_OP_SET, &evt_set, ESP_AVRC_RN_VOLUME_CHANGE);
+        esp_avrc_tg_set_rn_evt_cap(&evt_set);
+        const esp_timer_create_args_t va = { .callback = vol_tick, .name = "bt_vol" };
+        if (esp_timer_create(&va, &s_vol_timer) == ESP_OK) esp_timer_start_periodic(s_vol_timer, 250000);
+    }
     esp_a2d_register_callback(a2d_cb);
     esp_a2d_sink_register_data_callback(data_cb);
     if (esp_a2d_sink_init() != ESP_OK) {
         ESP_LOGE(TAG, "A2DP init failed");
         return false;
     }
-    esp_avrc_ct_init();
-    esp_avrc_ct_register_callback(avrc_ct_cb);
-    esp_avrc_tg_init();
-    esp_avrc_tg_register_callback(avrc_tg_cb);
     // Class of device: audio / loudspeaker, so phones list it with a speaker icon.
     esp_bt_cod_t cod = { .major = ESP_BT_COD_MAJOR_DEV_AV, .minor = 0x05 };
     esp_bt_gap_set_cod(cod, ESP_BT_SET_COD_MAJOR_MINOR);
@@ -467,9 +552,9 @@ static esp_err_t get_handler(httpd_req_t *req)
     strlcat(bonded, "]", sizeof bonded);
     char json[640];
     snprintf(json, sizeof json,
-             "{\"enabled\":%s,\"ssp\":%s,\"pair_boot\":%s,\"stack_up\":%s,\"name\":\"%s\",\"pairing\":%s,\"connected\":%s,\"peer\":\"%s\",\"peer_name\":\"%s\","
+             "{\"enabled\":%s,\"ssp\":%s,\"absvol\":%s,\"pair_boot\":%s,\"stack_up\":%s,\"name\":\"%s\",\"pairing\":%s,\"connected\":%s,\"peer\":\"%s\",\"peer_name\":\"%s\","
              "\"playing\":%s,\"rate\":%u,\"packets\":%u,\"dropped\":%u,\"underruns\":%u,\"rssi_delta\":%d,\"bonded\":%s,\"free_heap\":%u}\n",
-             s.enabled ? "true" : "false", s.ssp ? "true" : "false", s.pair_boot ? "true" : "false", s.stack_up ? "true" : "false", s.name, s.pairing ? "true" : "false",
+             s.enabled ? "true" : "false", s.ssp ? "true" : "false", s.absvol ? "true" : "false", s.pair_boot ? "true" : "false", s.stack_up ? "true" : "false", s.name, s.pairing ? "true" : "false",
              s.connected ? "true" : "false", s.peer, s.peer_name, s.ours ? "true" : "false", (unsigned)s.rate,
              (unsigned)s.packets, (unsigned)s.dropped, (unsigned)s.underruns, s.rssi_delta, bonded, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     httpd_resp_set_type(req, "application/json");
@@ -494,6 +579,15 @@ static esp_err_t post_handler(httpd_req_t *req)
             if (s.stack_up) esp_bt_gap_set_device_name(s.name);
         }
         if (httpd_query_key_value(q, "pairboot", v, sizeof v) == ESP_OK) s.pair_boot = atoi(v) != 0;
+        if (httpd_query_key_value(q, "absvol", v, sizeof v) == ESP_OK && (atoi(v) != 0) != s.absvol) {
+            s.absvol = atoi(v) != 0;   // advertised when the stack starts: save it and restart
+            save_settings();
+            esp_timer_handle_t t;
+            const esp_timer_create_args_t ta = { .callback = restart_cb, .name = "bt_restart" };
+            if (esp_timer_create(&ta, &t) == ESP_OK) esp_timer_start_once(t, 1500000);
+            httpd_resp_set_type(req, "application/json");
+            return httpd_resp_sendstr(req, "{\"restarting\":true}\n");
+        }
         if (httpd_query_key_value(q, "ssp", v, sizeof v) == ESP_OK && (atoi(v) != 0) != s.ssp) {
             s.ssp = atoi(v) != 0;   // the pairing method is chosen when the stack starts: save it and restart
             save_settings();
