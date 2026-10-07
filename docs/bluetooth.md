@@ -5,7 +5,7 @@ so the S3 version of the Audio Brick cannot do this. Code: `main/sources/bluetoo
 
 ## Check the antenna first
 
-The upstream schematic (rev C1) fits an **ESP32-WROVER-IE** module: the "IE" variant has **no printed antenna**, only a tiny u.FL socket for an external one.
+The upstream rev C1 BOM (part U5) fits an **ESP32-WROVER-IE-N16R8** module (16 MB flash, 8 MB PSRAM, matching what esptool reports on the test board): the "IE" variant has **no printed antenna**, only a tiny u.FL socket for an external one.
 On the board this was developed on nothing was plugged into that socket, and Bluetooth range was a few centimeters: a scan from the Brick heard one device at
 **-89 dBm**; after a small 2.4 GHz antenna was attached the same device was **-46 dBm** (43 dB stronger) and the Brick heard more devices.
 If Bluetooth (or later Wi-Fi) is weak, look at the module for the little round socket and attach an antenna.

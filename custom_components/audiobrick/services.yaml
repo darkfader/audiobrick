@@ -1,0 +1,16 @@
+sleep_timer:
+  fields:
+    minutes:
+      required: true
+      default: 30
+      selector:
+        number:
+          min: 0
+          max: 720
+          unit_of_measurement: min
+          mode: box
+    device_id:
+      required: false
+      selector:
+        device:
+          integration: audiobrick

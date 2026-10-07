@@ -1,3 +1,4 @@
+# LEGACY: superseded by the Home Assistant integration in custom_components/audiobrick (see docs/home-assistant.md). Kept as a YAML example; never tested against a real Home Assistant.
 # Home Assistant package for the Esparagus Audio Brick (firmware 1.1.0 or newer).
 #
 # What you get:

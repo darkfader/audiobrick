@@ -1,0 +1,119 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Esparagus Audio Brick",
+        "description": "Enter the address of the Brick (its name on your network, usually audiobrick.local, or its IP address) and the web password that is printed on the serial console at the first start (you can change it on the Brick's web page).",
+        "data": {
+          "host": "Address",
+          "password": "Web password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Password refused",
+        "description": "The Brick did not accept the saved web password. Enter the current one.",
+        "data": {
+          "password": "Web password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach the Brick at that address.",
+      "invalid_auth": "The Brick refused the password."
+    },
+    "abort": {
+      "already_configured": "This Brick is already set up.",
+      "reauth_successful": "Password updated.",
+      "cannot_connect": "Could not reach the device.",
+      "not_audiobrick": "That device is not an Audio Brick."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "supply_voltage": {
+        "name": "Supply voltage"
+      },
+      "amp_state": {
+        "name": "Amplifier",
+        "state": {
+          "active": "Awake",
+          "hiz": "Output off (Hi-Z)",
+          "off": "Powered down"
+        }
+      },
+      "estimated_level": {
+        "name": "Estimated sound level"
+      },
+      "stream_buffer": {
+        "name": "Stream buffer"
+      },
+      "dropouts": {
+        "name": "Dropouts"
+      },
+      "uptime": {
+        "name": "Uptime"
+      },
+      "free_heap": {
+        "name": "Free memory"
+      },
+      "restart_reason": {
+        "name": "Last restart"
+      },
+      "bluetooth_device": {
+        "name": "Bluetooth device"
+      }
+    },
+    "binary_sensor": {
+      "amp_fault": {
+        "name": "Amplifier fault"
+      },
+      "amp_warning": {
+        "name": "Amplifier warning"
+      },
+      "safe_mode": {
+        "name": "Safe mode"
+      },
+      "bluetooth_connected": {
+        "name": "Bluetooth connected"
+      },
+      "bluetooth_pairing": {
+        "name": "Bluetooth pairing window"
+      }
+    },
+    "switch": {
+      "ambient_scene": {
+        "name": "Ambient scene"
+      },
+      "bluetooth": {
+        "name": "Bluetooth"
+      }
+    },
+    "button": {
+      "stop": {
+        "name": "Stop"
+      },
+      "bluetooth_pair": {
+        "name": "Pair a Bluetooth device"
+      },
+      "bluetooth_disconnect": {
+        "name": "Disconnect Bluetooth device"
+      }
+    }
+  },
+  "services": {
+    "sleep_timer": {
+      "name": "Sleep timer",
+      "description": "Stops everything (music, ambient scene, the Bluetooth device) after the given number of minutes. 0 cancels the timer.",
+      "fields": {
+        "minutes": {
+          "name": "Minutes",
+          "description": "0 to 720."
+        },
+        "device_id": {
+          "name": "Brick",
+          "description": "Leave empty to use every Brick."
+        }
+      }
+    }
+  }
+}

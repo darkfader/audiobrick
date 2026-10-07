@@ -15,8 +15,7 @@ This repository is an independent community project, not made or endorsed by Son
 - **Sound sources:** a test tone, clips stored on the board (MP3/WAV, file manager on the page, mixed over a live stream), internet radio (MP3, HTTP and
   HTTPS), PC sound over TCP, VBAN (Voicemeeter), Scream, and an **OSC-controlled 8-voice synthesizer** (UDP 9000).
 - **EQ** from your own measurements (up to 6 biquad bands with automatic preamp; `tools/measure.py` measures a speaker with a USB microphone).
-- **Ambient scene** (rain plus random cat / door / typing sounds), **player** controls, **Home Assistant** package (`homeassistant/audiobrick.yaml`, not tested
-  against a real Home Assistant yet).
+- **Ambient scene** (rain plus random cat / door / typing sounds), **player** controls, **Home Assistant** integration (`custom_components/audiobrick`, see [docs/home-assistant.md](docs/home-assistant.md); written 2026-10-07, tested with a throwaway Home Assistant, not yet installed in a long-running one) and an older YAML package.
 - **Idle power saving:** output fades to zero, the amp mutes, goes Hi-Z after 20 s and powers down after 10 minutes, and wakes with no audible cost
   (measured, see [docs/tas5825m-power-down.md](docs/tas5825m-power-down.md)).
 - **Bluetooth audio** (ESP32 only): a phone can play music on the Brick through an explicit pairing window; see [docs/bluetooth.md](docs/bluetooth.md) (tested with one phone and with a Windows 11 PC, one device at a time; optionally the phone's volume keys control the amp volume; **the module needs an external antenna**).
@@ -41,6 +40,7 @@ Recommended: **one** playback device, no extra windows: VB-Cable plus a hidden b
 ## Documentation
 
 - [docs/architecture.md](docs/architecture.md): **start here to read the code**: folders, audio path, threads, settings, how to add a source, the component switches.
+- [docs/home-assistant.md](docs/home-assistant.md): the Home Assistant integration (`custom_components/audiobrick`, HACS-installable): media player, sensors, switches, TTS announcements.
 - [docs/wifi.md](docs/wifi.md): the Wi-Fi client, what it costs in memory, and the known limit with Bluetooth plus clips.
 - `installer/` and `.github/workflows/release.yml`: a browser installer and release builds. Pushing a tag `vX.Y.Z` builds the firmware in CI, attaches `audiobrick-factory.bin` (first install, flash at offset 0) and `audiobrick-ota.bin` (network update) to a release, and publishes a browser installer on GitHub Pages (needs Pages set to "GitHub Actions" once). Not run yet.
 - [CLAUDE.md](CLAUDE.md): detailed project notes, pinout, measurements, lessons learned (written while building this; long).

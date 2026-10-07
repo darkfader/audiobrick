@@ -11,6 +11,7 @@
 #include "esp_http_server.h"
 #include "esp_attr.h"
 #include "esp_log.h"
+#include "esp_mac.h"
 #include "esp_ota_ops.h"
 #include "esp_random.h"
 #include "esp_system.h"
@@ -300,9 +301,14 @@ static esp_err_t status_handler(httpd_req_t *req)
     media_kind_t mk = media_kind();
     size_t st_total = 0, st_free = 0;
     storage_info(&st_total, &st_free);
-    char json[2600];
+    char mac_str[18] = "";
+    {
+        uint8_t m[6];
+        if (esp_read_mac(m, ESP_MAC_ETH) == ESP_OK) snprintf(mac_str, sizeof mac_str, "%02x:%02x:%02x:%02x:%02x:%02x", m[0], m[1], m[2], m[3], m[4], m[5]);
+    }
+    char json[2700];
     snprintf(json, sizeof json,
-             "{\"version\":\"%s\",\"built\":\"%s %s\",\"partition\":\"%s\",\"uptime_s\":%lld,\"ip\":\"%s\","
+             "{\"version\":\"%s\",\"built\":\"%s %s\",\"partition\":\"%s\",\"uptime_s\":%lld,\"ip\":\"%s\",\"mac\":\"%s\","
              "\"boot\":{\"reason\":\"%s\",\"abnormal\":%s,\"count\":%u,\"crashes\":%u},\"time\":\"%s\",\"time_synced\":%s,\"pvdd_v\":%.2f,\"fault\":%s,\"warning\":%s,"
              "\"regs\":{\"chan_fault\":%u,\"fault1\":%u,\"fault2\":%u,\"warning\":%u},"
              "\"amp\":\"%s\",\"safe_mode\":%s,\"vol_db\":%d,\"volume_level\":%.3f,\"clip\":%s,"
@@ -316,7 +322,7 @@ static esp_err_t status_handler(httpd_req_t *req)
              "\"heap\":{\"free\":%u,\"largest\":%u,\"min\":%u},"
              "\"features\":{\"eq\":%s,\"ambient\":%s,\"vban\":%s,\"scream\":%s,\"radio\":%s,\"synth\":%s,\"bluetooth\":%s,\"clips\":%s,\"announce\":%s,\"tcpstream\":%s,\"powersave\":%s,\"sntp\":%s,\"safemode\":%s,\"bootinfo\":%s,\"mdns\":%s,\"wifi\":%s,\"schedule\":%s}}\n",
              app->version, app->date, app->time, part ? part->label : "?",
-             (long long)(esp_timer_get_time() / 1000000), net_ip_str(), bootinfo_reason(), bootinfo_abnormal() ? "true" : "false", (unsigned)bootinfo_count(), (unsigned)bootinfo_crashes(), clock_str, clock_ok ? "true" : "false", pvdd,
+             (long long)(esp_timer_get_time() / 1000000), net_ip_str(), mac_str, bootinfo_reason(), bootinfo_abnormal() ? "true" : "false", (unsigned)bootinfo_count(), (unsigned)bootinfo_crashes(), clock_str, clock_ok ? "true" : "false", pvdd,
              dac_fault_active() ? "true" : "false", dac_warning_active() ? "true" : "false",
              reg[0], reg[1], reg[2], reg[3], dac_state() == AMP_OFF ? "off" : (dac_state() == AMP_HIZ ? "hiz" : "active"), safemode_active() ? "true" : "false", vol, (vol + 70.0f) / (limits_max_volume_db() + 70.0f), clip ? "true" : "false",
              t.enabled ? "true" : "false", t.freq_hz, t.level_dbfs,
